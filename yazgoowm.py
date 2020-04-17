@@ -1,7 +1,4 @@
-# TinyWM is written by Nick Welch <nick@incise.org> in 2005 & 2011.
-#
-# This software is in the public domain
-# and is provided AS IS, with NO WARRANTY.
+# based on tinywm
 
 from Xlib.display import Display
 from Xlib import X, XK
