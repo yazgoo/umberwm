@@ -15,8 +15,10 @@ border = {"width": 2, "focus": "#906cff", "normal": "black"}
 keycode_to_char = {38: "a", 39: "u", 40: "i", 41: "o", 42: "p"}
 workspaces = ["a", "u", "i", "o", "p"]
 windows_by_workspaces = {"a": [], "u": [], "i": [], "o": [], "p": []}
+layouts_by_workspaces = {"a": 0, "u": 0, "i": 0, "o": 0, "p": 0}
 #</configuration>
 
+layouts = ['BSPV', 'BSPH', 'Monocle']
 current_workspace = workspaces[0]
 float_windows = []
 
@@ -55,33 +57,29 @@ _NET_WM_WINDOW_TYPE_SPLASH = dpy.intern_atom('_NET_WM_WINDOW_TYPE_SPLASH')
 _NET_WM_WINDOW_TYPE_DIALOG = dpy.intern_atom('_NET_WM_WINDOW_TYPE_DIALOG')
 auto_float_types = [_NET_WM_WINDOW_TYPE_NOTIFICATION, _NET_WM_WINDOW_TYPE_TOOLBAR, _NET_WM_WINDOW_TYPE_SPLASH, _NET_WM_WINDOW_TYPE_DIALOG]
 
-def full_screen(dpy, window, border):
-    window.configure(x=0, y=0, width=dpy.screen().width_in_pixels - 2 * border["width"],
-            height=dpy.screen().height_in_pixels - 2 * border["width"])
-
-def full_screen_if_alone(windows_by_workspaces, workspace_name, dpy, border, threshold):
-    workspace_windows = windows_by_workspaces[workspace_name]
-    count = len(workspace_windows)
-    if count == threshold:
-        full_screen(dpy, workspace_windows[0], border)
-
-def geometries(i, n, x, y, width, height, vertical = 1):
+def geometries_bsp(i, n, x, y, width, height, vertical = 1):
     if n == 0:
         return []
     elif n == 1:
         return [[x, y, width, height]]
     elif (i + vertical) % 2 == 0:
-        return [[x, y, width, height / 2]] + geometries(i + 1, n - 1, x, y + height / 2, width, height / 2)
+        return [[x, y, width, height / 2]] + geometries_bsp(i + 1, n - 1, x, y + height / 2, width, height / 2)
     else:
-        return [[x, y, width / 2, height]] + geometries(i + 1, n - 1, x + width / 2, y, width / 2, height)
+        return [[x, y, width / 2, height]] + geometries_bsp(i + 1, n - 1, x + width / 2, y, width / 2, height)
 
-def resize_workspace_windows(windows_by_workspaces, current_workspace, dpy, border, float_windows):
+def resize_workspace_windows(windows_by_workspaces, current_workspace, dpy, border, float_windows, layout, current_focus):
     windows = []
     for window in windows_by_workspaces[current_workspace]:
         if not window in float_windows:
             windows.append(window)
     count = len(windows)
-    geos = geometries(0, count, 0, 0, dpy.screen().width_in_pixels, dpy.screen().height_in_pixels)
+    geos = []
+    if layout == 'BSPV' or layout == 'BSPH':
+        geos = geometries_bsp(0, count, 0, 0, dpy.screen().width_in_pixels, dpy.screen().height_in_pixels, 1 if layout == 'BSPV' else 0)
+    elif layout == 'Monocle':
+        count = 1
+        windows = [windows[current_focus]]
+        geos = geometries_bsp(0, 1, 0, 0, dpy.screen().width_in_pixels, dpy.screen().height_in_pixels)
     for i in range(count):
         geo = geos[i]
         windows[i].configure(x = geo[0], y = geo[1], width = geo[2] - 2 * border["width"], height = geo[3] - 2 * border["width"])
@@ -118,7 +116,8 @@ while 1:
             float_window=True
         windows_by_workspaces[current_workspace].append(ev.window)
         if not float_window:
-            resize_workspace_windows(windows_by_workspaces, current_workspace, dpy, border, float_windows)
+            resize_workspace_windows(windows_by_workspaces, current_workspace, dpy, border, float_windows,
+            layouts[layouts_by_workspaces[current_workspace]], current_focus)
         else:
             float_windows.append(ev.window)
     if ev.type == X.DestroyNotify:
@@ -127,7 +126,8 @@ while 1:
                 if ev.window in float_windows:
                     float_windows.remove(ev.window)
                 workspace_windows.remove(ev.window)
-                resize_workspace_windows(windows_by_workspaces, workspace, dpy, border, float_windows)
+                resize_workspace_windows(windows_by_workspaces, workspace, dpy, border, float_windows,
+            layouts[layouts_by_workspaces[current_workspace]], current_focus)
                 if current_workspace == workspace:
                     current_focus = 0
     elif ev.type == X.KeyPress and ev.detail in keycode_to_char.keys() and keycode_to_char[ev.detail] in windows_by_workspaces.keys():
@@ -149,12 +149,14 @@ while 1:
             window = windows_by_workspaces[current_workspace][current_focus]
             window.configure(border_width = border["width"])
             window.change_attributes(None,border_pixel=black)
+            window.configure(stack_mode = X.Below)
             current_focus += 1
             current_focus = current_focus % window_count
             window = windows_by_workspaces[current_workspace][current_focus]
             window.set_input_focus(X.RevertToParent, 0)
             window.configure(border_width = border["width"])
             window.change_attributes(None,border_pixel=red)
+            window.configure(stack_mode = X.Above)
             dpy.sync()
     elif ev.type == X.KeyRelease and ev.detail == 46:
         subprocess.call(["rofi", "-show", "run"])
@@ -163,7 +165,9 @@ while 1:
     elif ev.type == X.KeyRelease and ev.detail == 58:
         sys.exit(1)
     elif ev.type == X.KeyRelease and ev.detail == 61:
-        full_screen_if_alone(windows_by_workspaces, current_workspace, dpy, border, 2)
+        layouts_by_workspaces[current_workspace] = (layouts_by_workspaces[current_workspace] + 1) % len(layouts) 
+        resize_workspace_windows(windows_by_workspaces, current_workspace, dpy, border, float_windows,
+            layouts[layouts_by_workspaces[current_workspace]], current_focus)
     elif ev.type == X.KeyRelease and ev.detail == 35:
         window_count = len(windows_by_workspaces[current_workspace])
         if window_count > 0:
