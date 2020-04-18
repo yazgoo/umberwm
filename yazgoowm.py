@@ -2,24 +2,33 @@
 # based on tinywm
 
 from Xlib.display import Display
-from Xlib import X, XK
+from Xlib import X, XK, Xatom, error
 import subprocess
 import sys
+import time
 
-dpy = Display()
 
+# <configuration>
+float_classes = ( 'screenkey' 'audacious', 'Download', 'dropbox', 'file_progress', 'file-roller', 'gimp', 'ThisWindowMustFloat', 'Komodo_confirm_repl', 'Komodo_find2', 'pidgin', 'skype', 'Transmission', 'Update', 'Xephyr', 'obs', 'zoom')
 meta = X.Mod4Mask if sys.argv[1] == "mod4" else X.Mod1Mask
-print(meta)
 border = {"width": 2, "focus": "#906cff", "normal": "black"}
-current_workspace = "a"
 keycode_to_char = {38: "a", 39: "u", 40: "i", 41: "o", 42: "p"}
 workspaces = ["a", "u", "i", "o", "p"]
 windows_by_workspaces = {"a": [], "u": [], "i": [], "o": [], "p": []}
+#</configuration>
+
+current_workspace = workspaces[0]
+float_windows = []
+
+dpy = Display()
+def string_to_keycode(dpy, key):
+    return dpy.keysym_to_keycode(XK.string_to_keysym(key))
+
 # space
 dpy.screen().root.grab_key(65, meta, 1,
         X.GrabModeAsync, X.GrabModeAsync)
 for key in ["r", "f", "w", "t", "q"]:
-    dpy.screen().root.grab_key(dpy.keysym_to_keycode(XK.string_to_keysym(key)), meta, 1,
+    dpy.screen().root.grab_key(string_to_keycode(dpy, key), meta, 1,
             X.GrabModeAsync, X.GrabModeAsync)
 dpy.screen().root.grab_button(1, meta, 1, X.ButtonPressMask|X.ButtonReleaseMask|X.PointerMotionMask,
         X.GrabModeAsync, X.GrabModeAsync, X.NONE, X.NONE)
@@ -27,9 +36,8 @@ dpy.screen().root.grab_button(3, meta, 1, X.ButtonPressMask|X.ButtonReleaseMask|
         X.GrabModeAsync, X.GrabModeAsync, X.NONE, X.NONE)
 dpy.screen().root.change_attributes(event_mask=X.SubstructureNotifyMask)
 for workspace in windows_by_workspaces.keys():
-    dpy.screen().root.grab_key(dpy.keysym_to_keycode(XK.string_to_keysym(workspace[0])), meta, 1,
-            X.GrabModeAsync, X.GrabModeAsync)
-    dpy.screen().root.grab_key(dpy.keysym_to_keycode(XK.string_to_keysym(workspace[0])), meta|X.ShiftMask, 1,
+    dpy.screen().root.grab_key(string_to_keycode(dpy, workspace[0]), meta, 1, X.GrabModeAsync, X.GrabModeAsync)
+    dpy.screen().root.grab_key(string_to_keycode(dpy, workspace[0]), meta|X.ShiftMask, 1,
             X.GrabModeAsync, X.GrabModeAsync)
 
 start = None
@@ -38,35 +46,88 @@ colormap = dpy.screen().default_colormap
 red = colormap.alloc_named_color(border["focus"]).pixel
 black = colormap.alloc_named_color(border["normal"]).pixel
 
+_NET_WM_STATE_MODAL = dpy.intern_atom(name='_NET_WM_STATE_MODAL', only_if_exists=0)
+_NET_WM_WINDOW_TYPE = dpy.intern_atom('_NET_WM_WINDOW_TYPE', True)
+
+_NET_WM_WINDOW_TYPE_NOTIFICATION = dpy.intern_atom('_NET_WM_WINDOW_TYPE_NOTIFICATION')
+_NET_WM_WINDOW_TYPE_TOOLBAR = dpy.intern_atom('_NET_WM_WINDOW_TYPE_TOOLBAR')
+_NET_WM_WINDOW_TYPE_SPLASH = dpy.intern_atom('_NET_WM_WINDOW_TYPE_SPLASH')
+_NET_WM_WINDOW_TYPE_DIALOG = dpy.intern_atom('_NET_WM_WINDOW_TYPE_DIALOG')
+auto_float_types = [_NET_WM_WINDOW_TYPE_NOTIFICATION, _NET_WM_WINDOW_TYPE_TOOLBAR, _NET_WM_WINDOW_TYPE_SPLASH, _NET_WM_WINDOW_TYPE_DIALOG]
+
 def full_screen(dpy, window, border):
     window.configure(x=0, y=0, width=dpy.screen().width_in_pixels - 2 * border["width"],
             height=dpy.screen().height_in_pixels - 2 * border["width"])
 
+def full_screen_if_alone(windows_by_workspaces, workspace_name, dpy, border, threshold):
+    workspace_windows = windows_by_workspaces[workspace_name]
+    count = len(workspace_windows)
+    if count == threshold:
+        full_screen(dpy, workspace_windows[0], border)
+
+def geometries(i, n, x, y, width, height, vertical = 1):
+    if n == 0:
+        return []
+    elif n == 1:
+        return [[x, y, width, height]]
+    elif (i + vertical) % 2 == 0:
+        return [[x, y, width, height / 2]] + geometries(i + 1, n - 1, x, y + height / 2, width, height / 2)
+    else:
+        return [[x, y, width / 2, height]] + geometries(i + 1, n - 1, x + width / 2, y, width / 2, height)
+
+def resize_workspace_windows(windows_by_workspaces, current_workspace, dpy, border, float_windows):
+    windows = []
+    for window in windows_by_workspaces[current_workspace]:
+        if not window in float_windows:
+            windows.append(window)
+    count = len(windows)
+    geos = geometries(0, count, 0, 0, dpy.screen().width_in_pixels, dpy.screen().height_in_pixels)
+    for i in range(count):
+        geo = geos[i]
+        windows[i].configure(x = geo[0], y = geo[1], width = geo[2] - 2 * border["width"], height = geo[3] - 2 * border["width"])
 
 while 1:
-    print("lol")
     ev = dpy.next_event()
-    print(ev)
     if ev.type == X.MapNotify and not ev.window in windows_by_workspaces[current_workspace]:
-        windows_by_workspaces[current_workspace].append(ev.window)
         ev.window.configure(border_width = border["width"])
-        count = len(windows_by_workspaces[current_workspace])
-        if count == 1:
-            full_screen(dpy, ev.window, border)
+        wm_class = ""
+        found_window=False
+        for i in range(5):
+            try:
+                wm_class = ev.window.get_wm_class()
+                found_window=True
+                break
+            except error.BadWindow:
+                print("got BadWindow, waiting..")
+                time.sleep(0.05)
+        float_window=False
+        if not found_window:
+            continue
+        window_type = None
+        try:
+            window_type = ev.window.get_full_property(_NET_WM_WINDOW_TYPE, Xatom.ATOM)
+        except error.BadAtom:
+            pass
+        print("UGUU")
+        print(window_type)
+        print(wm_class)
+        if window_type != None:
+            if window_type.value[0] in auto_float_types:
+                float_window=True
+        if wm_class != None and wm_class[0] in float_classes:
+            float_window=True
+        windows_by_workspaces[current_workspace].append(ev.window)
+        if not float_window:
+            resize_workspace_windows(windows_by_workspaces, current_workspace, dpy, border, float_windows)
         else:
-            windows_by_workspaces[current_workspace][0].configure(x=0, y=0, width=dpy.screen().width_in_pixels / 2 - 2 * border["width"],
-                    height=dpy.screen().height_in_pixels - 2 * border["width"])
-            ev.window.configure(x=dpy.screen().width_in_pixels / 2, y=0,
-                    width=dpy.screen().width_in_pixels / 2 - 2 * border["width"],
-                    height=dpy.screen().height_in_pixels - 2 * border["width"])
-        print(windows_by_workspaces)
+            float_windows.append(ev.window)
     if ev.type == X.DestroyNotify:
         for workspace, workspace_windows in windows_by_workspaces.items():
             if ev.window in workspace_windows:
+                if ev.window in float_windows:
+                    float_windows.remove(ev.window)
                 workspace_windows.remove(ev.window)
-                count = len(workspace_windows)
-                if count == 1:
-                    full_screen(dpy, workspace_windows[0], border)
+                resize_workspace_windows(windows_by_workspaces, workspace, dpy, border, float_windows)
                 if current_workspace == workspace:
                     current_focus = 0
     elif ev.type == X.KeyPress and ev.detail in keycode_to_char.keys() and keycode_to_char[ev.detail] in windows_by_workspaces.keys():
@@ -81,7 +142,6 @@ while 1:
         current_workspace = keycode_to_char[ev.detail]
         for window in windows_by_workspaces[current_workspace]:
             window.map()
-        print("UGUU => switch to " + current_workspace)
         current_focus = 0
     elif ev.type == X.KeyRelease and ev.detail == 65:
         window_count = len(windows_by_workspaces[current_workspace])
@@ -102,6 +162,8 @@ while 1:
         subprocess.call(["kitty"])
     elif ev.type == X.KeyRelease and ev.detail == 58:
         sys.exit(1)
+    elif ev.type == X.KeyRelease and ev.detail == 61:
+        full_screen_if_alone(windows_by_workspaces, current_workspace, dpy, border, 2)
     elif ev.type == X.KeyRelease and ev.detail == 35:
         window_count = len(windows_by_workspaces[current_workspace])
         if window_count > 0:
