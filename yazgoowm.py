@@ -9,21 +9,16 @@ from Xlib import X, XK, Xatom, error, display
 
 def main():
     """runs the window manager, see README.md for more information"""
-    # configuration:
-    meta = X.Mod4Mask if sys.argv[1] == "mod4" else X.Mod1Mask
-    border = {"width": 2, "focus": "#906cff", "normal": "black"}
-    workspaces = ["a", "u", "i", "o", "p"]
-    custom_actions = {"r": lambda: subprocess.call(["rofi", "-show", "run"]), "t": lambda: subprocess.call(["kitty"]), "q": lambda: sys.exit(1)}
-    wm_actions = {" ": 'switch_window', "w": 'close_window', "f": 'change_layout'}
-    float_classes = ('screenkey', 'audacious', 'Download', 'dropbox', 'file_progress', 'file-roller', 'gimp', 'ThisWindowMustFloat',
-                     'Komodo_confirm_repl', 'Komodo_find2', 'pidgin', 'skype', 'Transmission', 'Update', 'Xephyr', 'obs', 'zoom')
-
-    layouts = ['BSPV', 'Monocle', 'BSPH']
-    current_workspace = workspaces[0]
-    float_windows = []
-    windows_by_workspaces = {workspace: [] for workspace in workspaces}
-    layouts_by_workspaces = {workspace: 0 for workspace in workspaces}
-
+    conf = {
+        "meta" : X.Mod4Mask if sys.argv[1] == "mod4" else X.Mod1Mask,
+        "border": {"width": 2, "focus": "#906cff", "normal": "black"},
+        "workspaces": ["a", "u", "i", "o", "p"],
+        "custom_actions": {"r": lambda: subprocess.call(["rofi", "-show", "run"]), "t": lambda: subprocess.call(["kitty"]), "q": lambda: sys.exit(1)},
+        "wm_actions": {" ": 'switch_window', "w": 'close_window', "f": 'change_layout'},
+        "float_classes": ('screenkey', 'audacious', 'Download', 'dropbox', 'file_progress', 'file-roller', 'gimp',
+                          'Komodo_confirm_repl', 'Komodo_find2', 'pidgin', 'skype', 'Transmission', 'Update', 'Xephyr', 'obs', 'zoom'),
+        "float_types": ('notification', 'toolbar', 'splash', 'dialog'),
+        }
 
     def string_to_keycode(dpy, key):
         return dpy.keysym_to_keycode(XK.string_to_keysym(key))
@@ -33,30 +28,9 @@ def main():
         return dpy.lookup_string(dpy.keycode_to_keysym(key, 0))
 
 
-    def wm_action(dpy, key, wm_actions):
+    def wm_action(dpy, key, conf):
         char = keycode_to_char(dpy, key)
-        return wm_actions[char] if char in wm_actions else None
-
-
-    dpy = display.Display()
-    for key in wm_actions.keys() + custom_actions.keys() + workspaces:
-        dpy.screen().root.grab_key(string_to_keycode(dpy, key),
-                                   meta, 1, X.GrabModeAsync, X.GrabModeAsync)
-        if key in workspaces:
-            dpy.screen().root.grab_key(string_to_keycode(dpy, key), meta | X.ShiftMask, 1,
-                                       X.GrabModeAsync, X.GrabModeAsync)
-    for button in [1, 3]:
-        dpy.screen().root.grab_button(button, meta, 1, X.ButtonPressMask | X.ButtonReleaseMask | X.PointerMotionMask,
-                                      X.GrabModeAsync, X.GrabModeAsync, X.NONE, X.NONE)
-    dpy.screen().root.change_attributes(event_mask=X.SubstructureNotifyMask)
-
-    mouse_move_start = None
-    current_focus = 0
-    border_colors = {name : dpy.screen().default_colormap.alloc_named_color(border[name]).pixel for name in ["focus", "normal"]}
-
-    auto_float_types = [dpy.intern_atom('_NET_WM_WINDOW_TYPE_NOTIFICATION'), dpy.intern_atom('_NET_WM_WINDOW_TYPE_TOOLBAR'),
-                        dpy.intern_atom('_NET_WM_WINDOW_TYPE_SPLASH'), dpy.intern_atom('_NET_WM_WINDOW_TYPE_DIALOG'), ]
-
+        return conf["wm_actions"][char] if char in conf["wm_actions"] else None
 
     def geometries_bsp(i, window_count, left, top, width, height, vertical=1):
         if window_count == 0:
@@ -68,7 +42,7 @@ def main():
         return [[left, top, width / 2, height]] + geometries_bsp(i + 1, window_count - 1, left + width / 2, top, width / 2, height)
 
 
-    def resize_workspace_windows(windows_by_workspaces, current_workspace, dpy, border, float_windows, layout, current_focus):
+    def resize_workspace_windows(windows_by_workspaces, current_workspace, dpy, conf, float_windows, layout, current_focus):
         windows = []
         for window in windows_by_workspaces[current_workspace]:
             if not window in float_windows:
@@ -88,12 +62,12 @@ def main():
         for i in range(count):
             geo = geos[i]
             windows[i].configure(x=geo[0], y=geo[1], width=geo[2] -
-                                 2 * border["width"], height=geo[3] - 2 * border["width"])
+                                 2 * conf["border"]["width"], height=geo[3] - 2 * conf["border"]["width"])
 
 
-    def configure_window_border(windows_by_workspaces, current_workspace, current_focus, border, border_colors, border_kind, stack_mode):
+    def configure_window_border(windows_by_workspaces, current_workspace, current_focus, conf, border_colors, border_kind, stack_mode):
         window = windows_by_workspaces[current_workspace][current_focus]
-        window.configure(border_width=border["width"])
+        window.configure(border_width=conf["border"]["width"])
         window.change_attributes(None, border_pixel=border_colors[border_kind])
         window.configure(stack_mode=stack_mode)
         return window
@@ -118,22 +92,46 @@ def main():
             pass
         return window_type
 
+    def enable_event_listening(dpy, conf):
+        for key in conf["wm_actions"].keys() + conf["custom_actions"].keys() + conf["workspaces"]:
+            dpy.screen().root.grab_key(string_to_keycode(dpy, key),
+                                       conf["meta"], 1, X.GrabModeAsync, X.GrabModeAsync)
+            if key in conf["workspaces"]:
+                dpy.screen().root.grab_key(string_to_keycode(dpy, key), conf["meta"] | X.ShiftMask, 1,
+                                           X.GrabModeAsync, X.GrabModeAsync)
+        for button in [1, 3]:
+            dpy.screen().root.grab_button(button, conf["meta"], 1, X.ButtonPressMask | X.ButtonReleaseMask | X.PointerMotionMask,
+                                          X.GrabModeAsync, X.GrabModeAsync, X.NONE, X.NONE)
+        dpy.screen().root.change_attributes(event_mask=X.SubstructureNotifyMask)
 
-    while 1:
+    dpy = display.Display()
+    layouts = ['BSPV', 'Monocle', 'BSPH']
+    current_workspace = conf["workspaces"][0]
+    float_windows = []
+    windows_by_workspaces = {workspace: [] for workspace in conf["workspaces"]}
+    layouts_by_workspaces = {workspace: 0 for workspace in conf["workspaces"]}
+    mouse_move_start = None
+    current_focus = 0
+    border_colors = {name : dpy.screen().default_colormap.alloc_named_color(conf["border"][name]).pixel for name in ["focus", "normal"]}
+    auto_float_types = [dpy.intern_atom('_NET_WM_WINDOW_TYPE_' + typ.upper()) for typ in conf["float_types"]]
+
+    enable_event_listening(dpy, conf)
+
+    while True:
         event = dpy.next_event()
         if event.type == X.MapNotify and not event.window in windows_by_workspaces[current_workspace]:
-            event.window.configure(border_width=border["width"])
+            event.window.configure(border_width=conf["border"]["width"])
             wm_class = get_wm_class(event)
             if wm_class is None:
                 continue
             window_type = get_window_type(event)
             windows_by_workspaces[current_workspace].append(event.window)
             float_window = ((window_type is not None and window_type.value[0] in auto_float_types) or (
-                wm_class is not None and wm_class[0] in float_classes))
+                wm_class is not None and wm_class[0] in conf["float_classes"]))
             if float_window:
                 float_windows.append(event.window)
             else:
-                resize_workspace_windows(windows_by_workspaces, current_workspace, dpy, border, float_windows,
+                resize_workspace_windows(windows_by_workspaces, current_workspace, dpy, conf, float_windows,
                                          layouts[layouts_by_workspaces[current_workspace]], current_focus)
         if event.type == X.DestroyNotify:
             for workspace, workspace_windows in windows_by_workspaces.items():
@@ -141,7 +139,7 @@ def main():
                     if event.window in float_windows:
                         float_windows.remove(event.window)
                     workspace_windows.remove(event.window)
-                    resize_workspace_windows(windows_by_workspaces, workspace, dpy, border, float_windows,
+                    resize_workspace_windows(windows_by_workspaces, workspace, dpy, conf, float_windows,
                                              layouts[layouts_by_workspaces[current_workspace]], current_focus)
                     if current_workspace == workspace:
                         current_focus = 0
@@ -157,25 +155,25 @@ def main():
             for window in windows_by_workspaces[current_workspace]:
                 window.map()
             current_focus = 0
-        elif event.type == X.KeyRelease and wm_action(dpy, event.detail, wm_actions) == 'switch_window':
+        elif event.type == X.KeyRelease and wm_action(dpy, event.detail, conf) == 'switch_window':
             window_count = len(windows_by_workspaces[current_workspace])
             if window_count > 0:
                 configure_window_border(windows_by_workspaces, current_workspace,
-                                        current_focus, border, border_colors, "normal", X.Below)
+                                        current_focus, conf, border_colors, "normal", X.Below)
                 current_focus += 1
                 current_focus = current_focus % window_count
                 window = configure_window_border(
-                    windows_by_workspaces, current_workspace, current_focus, border, border_colors, "focus", X.Above)
+                    windows_by_workspaces, current_workspace, current_focus, conf, border_colors, "focus", X.Above)
                 window.set_input_focus(X.RevertToParent, 0)
                 dpy.sync()
-        elif event.type == X.KeyRelease and keycode_to_char(dpy, event.detail) in custom_actions.keys():
-            custom_actions[keycode_to_char(dpy, event.detail)]()
-        elif event.type == X.KeyRelease and wm_action(dpy, event.detail, wm_actions) == 'change_layout':
+        elif event.type == X.KeyRelease and keycode_to_char(dpy, event.detail) in conf["custom_actions"].keys():
+            conf["custom_actions"][keycode_to_char(dpy, event.detail)]()
+        elif event.type == X.KeyRelease and wm_action(dpy, event.detail, conf) == 'change_layout':
             layouts_by_workspaces[current_workspace] = (
                 layouts_by_workspaces[current_workspace] + 1) % len(layouts)
-            resize_workspace_windows(windows_by_workspaces, current_workspace, dpy, border, float_windows,
+            resize_workspace_windows(windows_by_workspaces, current_workspace, dpy, conf, float_windows,
                                      layouts[layouts_by_workspaces[current_workspace]], current_focus)
-        elif event.type == X.KeyRelease and wm_action(dpy, event.detail, wm_actions) == 'close_window':
+        elif event.type == X.KeyRelease and wm_action(dpy, event.detail, conf) == 'close_window':
             window_count = len(windows_by_workspaces[current_workspace])
             if window_count > 0:
                 window = windows_by_workspaces[current_workspace][current_focus]
