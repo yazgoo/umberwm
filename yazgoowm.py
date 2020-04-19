@@ -1,22 +1,15 @@
 #!/usr/bin/env python
 
-"""see README.md for more information"""
-
-import subprocess
-import sys
-import time
+import subprocess, sys, time
 from Xlib import X, XK, Xatom, error, display
 
 class YazgooWM:
-    """runs the window manager, see README.md for more information"""
 
     def string_to_keycode(self, dpy, key):
         return dpy.keysym_to_keycode(XK.string_to_keysym(key))
 
-
     def keycode_to_char(self, dpy, key):
         return dpy.lookup_string(dpy.keycode_to_keysym(key, 0))
-
 
     def wm_action(self, dpy, key, conf):
         char = self.keycode_to_char(dpy, key)
@@ -30,7 +23,6 @@ class YazgooWM:
         if (i + vertical) % 2 == 0:
             return [[left, top, width, height / 2]] + self.geometries_bsp(i + 1, window_count - 1, left, top + height / 2, width, height / 2)
         return [[left, top, width / 2, height]] + self.geometries_bsp(i + 1, window_count - 1, left + width / 2, top, width / 2, height)
-
 
     def resize_workspace_windows(self, windows_by_workspaces, current_workspace, dpy, conf, float_windows, layout, current_focus):
         windows = []
@@ -54,14 +46,12 @@ class YazgooWM:
             windows[i].configure(x=geo[0], y=geo[1], width=geo[2] -
                                  2 * conf["border"]["width"], height=geo[3] - 2 * conf["border"]["width"])
 
-
     def configure_window_border(self, windows_by_workspaces, current_workspace, current_focus, conf, border_colors, border_kind, stack_mode):
         window = windows_by_workspaces[current_workspace][current_focus]
         window.configure(border_width=conf["border"]["width"])
         window.change_attributes(None, border_pixel=border_colors[border_kind])
         window.configure(stack_mode=stack_mode)
         return window
-
 
     def get_wm_class(self, event):
         # window attributes are not directly available, this is a hack to wait for them
@@ -109,83 +99,104 @@ class YazgooWM:
         self.enable_event_listening(self.dpy, conf)
         self.conf = conf
 
+    def setup_new_window(self, event):
+        event.window.configure(border_width=self.conf["border"]["width"])
+        wm_class = self.get_wm_class(event)
+        if wm_class is None:
+            return
+        window_type = self.get_window_type(self.dpy, event)
+        self.windows_by_workspaces[self.current_workspace].append(event.window)
+        float_window = ((window_type is not None and window_type.value[0] in self.auto_float_types) or (
+            wm_class is not None and wm_class[0] in self.conf["float_classes"]))
+        if float_window:
+            self.float_windows.append(event.window)
+        else:
+            self.resize_workspace_windows(self.windows_by_workspaces, self.current_workspace, self.dpy, self.conf, self.float_windows,
+                                     self.layouts[self.layouts_by_workspaces[self.current_workspace]], self.current_focus)
+
+    def destroy_window(self, event):
+        for workspace, workspace_windows in self.windows_by_workspaces.items():
+            if event.window in workspace_windows:
+                if event.window in self.float_windows:
+                    self.float_windows.remove(event.window)
+                workspace_windows.remove(event.window)
+                self.resize_workspace_windows(self.windows_by_workspaces, workspace, self.dpy, self.conf, self.float_windows,
+                                         self.layouts[self.layouts_by_workspaces[self.current_workspace]], self.current_focus)
+                if self.current_workspace == workspace:
+                    self.current_focus = 0
+
+    def change_workspace(self, event):
+        if event.state & X.ShiftMask and len(self.windows_by_workspaces[self.current_workspace]) > 0:
+            window = self.windows_by_workspaces[self.current_workspace][self.current_focus]
+            self.windows_by_workspaces[self.current_workspace].remove(window)
+            destination_workspace = self.keycode_to_char(self.dpy, event.detail)
+            self.windows_by_workspaces[destination_workspace].append(window)
+        for window in self.windows_by_workspaces[self.current_workspace]:
+            window.unmap()
+        self.current_workspace = self.keycode_to_char(self.dpy, event.detail)
+        for window in self.windows_by_workspaces[self.current_workspace]:
+            window.map()
+        self.current_focus = 0
+
+    def switch_window(self):
+        window_count = len(self.windows_by_workspaces[self.current_workspace])
+        if window_count > 0:
+            self.configure_window_border(self.windows_by_workspaces, self.current_workspace,
+                                    self.current_focus, self.conf, self.border_colors, "normal", X.Below)
+            self.current_focus += 1
+            self.current_focus = self.current_focus % window_count
+            window = self.configure_window_border(
+                self.windows_by_workspaces, self.current_workspace, self.current_focus, self.conf, self.border_colors, "focus", X.Above)
+            window.set_input_focus(X.RevertToParent, 0)
+            self.dpy.sync()
+
+    def change_layout(self):
+        self.layouts_by_workspaces[self.current_workspace] = (
+            self.layouts_by_workspaces[self.current_workspace] + 1) % len(self.layouts)
+        self.resize_workspace_windows(self.windows_by_workspaces, self.current_workspace, self.dpy, self.conf, self.float_windows,
+                                 self.layouts[self.layouts_by_workspaces[self.current_workspace]], self.current_focus)
+
+    def close_window(self):
+        window_count = len(self.windows_by_workspaces[self.current_workspace])
+        if window_count > 0:
+            window = self.windows_by_workspaces[self.current_workspace][self.current_focus]
+            self.windows_by_workspaces[self.current_workspace].remove(window)
+            window.destroy()
+
+    def resize_window(self, event):
+        xdiff = event.root_x - self.mouse_move_start.root_x
+        ydiff = event.root_y - self.mouse_move_start.root_y
+        self.mouse_move_start.child.configure(
+            x=self.attr.x + (self.mouse_move_start.detail == 1 and xdiff or 0),
+            y=self.attr.y + (self.mouse_move_start.detail == 1 and ydiff or 0),
+            width=max(1, self.attr.width +
+                      (self.mouse_move_start.detail == 3 and xdiff or 0)),
+            height=max(1, self.attr.height + (self.mouse_move_start.detail == 3 and ydiff or 0)))
+
     def run(self):
         while True:
             event = self.dpy.next_event()
             if event.type == X.MapNotify and not event.window in self.windows_by_workspaces[self.current_workspace]:
-                event.window.configure(border_width=self.conf["border"]["width"])
-                wm_class = self.get_wm_class(event)
-                if wm_class is None:
-                    continue
-                window_type = self.get_window_type(self.dpy, event)
-                self.windows_by_workspaces[self.current_workspace].append(event.window)
-                float_window = ((window_type is not None and window_type.value[0] in self.auto_float_types) or (
-                    wm_class is not None and wm_class[0] in self.conf["float_classes"]))
-                if float_window:
-                    self.float_windows.append(event.window)
-                else:
-                    self.resize_workspace_windows(self.windows_by_workspaces, self.current_workspace, self.dpy, self.conf, self.float_windows,
-                                             self.layouts[self.layouts_by_workspaces[self.current_workspace]], self.current_focus)
-            if event.type == X.DestroyNotify:
-                for workspace, workspace_windows in self.windows_by_workspaces.items():
-                    if event.window in workspace_windows:
-                        if event.window in self.float_windows:
-                            self.float_windows.remove(event.window)
-                        workspace_windows.remove(event.window)
-                        self.resize_workspace_windows(self.windows_by_workspaces, workspace, self.dpy, self.conf, self.float_windows,
-                                                 self.layouts[self.layouts_by_workspaces[self.current_workspace]], self.current_focus)
-                        if self.current_workspace == workspace:
-                            self.current_focus = 0
+                self.setup_new_window(event)
+            elif event.type == X.DestroyNotify:
+                self.destroy_window(event)
             elif event.type == X.KeyPress and self.keycode_to_char(self.dpy, event.detail) in self.windows_by_workspaces.keys():
-                if event.state & X.ShiftMask and len(self.windows_by_workspaces[self.current_workspace]) > 0:
-                    window = self.windows_by_workspaces[self.current_workspace][self.current_focus]
-                    self.windows_by_workspaces[self.current_workspace].remove(window)
-                    destination_workspace = self.keycode_to_char(self.dpy, event.detail)
-                    self.windows_by_workspaces[destination_workspace].append(window)
-                for window in self.windows_by_workspaces[self.current_workspace]:
-                    window.unmap()
-                self.current_workspace = self.keycode_to_char(self.dpy, event.detail)
-                for window in self.windows_by_workspaces[self.current_workspace]:
-                    window.map()
-                self.current_focus = 0
+                self.change_workspace(event)
             elif event.type == X.KeyRelease and self.wm_action(self.dpy, event.detail, self.conf) == 'switch_window':
-                window_count = len(self.windows_by_workspaces[self.current_workspace])
-                if window_count > 0:
-                    self.configure_window_border(self.windows_by_workspaces, self.current_workspace,
-                                            self.current_focus, self.conf, border_colors, "normal", X.Below)
-                    self.current_focus += 1
-                    self.current_focus = self.current_focus % window_count
-                    window = self.configure_window_border(
-                        self.windows_by_workspaces, self.current_workspace, self.current_focus, self.conf, border_colors, "focus", X.Above)
-                    window.set_input_focus(X.RevertToParent, 0)
-                    self.dpy.sync()
+                self.switch_window()
             elif event.type == X.KeyRelease and self.keycode_to_char(self.dpy, event.detail) in self.conf["custom_actions"].keys():
                 self.conf["custom_actions"][self.keycode_to_char(self.dpy, event.detail)]()
             elif event.type == X.KeyRelease and self.wm_action(self.dpy, event.detail, self.conf) == 'change_layout':
-                self.layouts_by_workspaces[self.current_workspace] = (
-                    self.layouts_by_workspaces[self.current_workspace] + 1) % len(self.layouts)
-                self.resize_workspace_windows(self.windows_by_workspaces, self.current_workspace, self.dpy, self.conf, self.float_windows,
-                                         self.layouts[self.layouts_by_workspaces[self.current_workspace]], self.current_focus)
+                self.change_layout()
             elif event.type == X.KeyRelease and self.wm_action(self.dpy, event.detail, self.conf) == 'close_window':
-                window_count = len(self.windows_by_workspaces[self.current_workspace])
-                if window_count > 0:
-                    window = self.windows_by_workspaces[self.current_workspace][self.current_focus]
-                    self.windows_by_workspaces[self.current_workspace].remove(window)
-                    window.destroy()
+                self.close_window()
             elif event.type == X.KeyPress and event.child != X.NONE:
                 event.child.configure(stack_mode=X.Above)
             elif event.type == X.ButtonPress and event.child != X.NONE:
-                attr = event.child.get_geometry()
+                self.attr = event.child.get_geometry()
                 self.mouse_move_start = event
             elif event.type == X.MotionNotify and self.mouse_move_start:
-                xdiff = event.root_x - self.mouse_move_start.root_x
-                ydiff = event.root_y - self.mouse_move_start.root_y
-                self.mouse_move_start.child.configure(
-                    x=attr.x + (self.mouse_move_start.detail == 1 and xdiff or 0),
-                    y=attr.y + (self.mouse_move_start.detail == 1 and ydiff or 0),
-                    width=max(1, attr.width +
-                              (self.mouse_move_start.detail == 3 and xdiff or 0)),
-                    height=max(1, attr.height + (self.mouse_move_start.detail == 3 and ydiff or 0)))
+                self.resize_window(event)
             elif event.type == X.ButtonRelease:
                 self.mouse_move_start = None
 YazgooWM(

@@ -6,12 +6,12 @@ yazgoowm is a minimalistic X window manager based on tinywm, inspired by qtile, 
   - configuration as code (like qtile, dwm)
   - tiled by default (Binary space partitioning)
   - supports workspaces
-  - single file, less than 200 LOC
+  - single file, ~200 LoC
 
 # using it
-    
-    put in your .xinitrc
 
-    ```shell
-    exec /path/to/yazgoowm.py mod4
-    ```
+put in your .xinitrc
+
+```shell
+exec /path/to/yazgoowm.py mod4
+```
