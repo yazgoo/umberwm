@@ -25,22 +25,23 @@ class YazgooWM:
         return [[left, top, width / 2, height]] + self.geometries_bsp(i + 1, window_count - 1, left + width / 2, top, width / 2, height)
 
     def resize_workspace_windows(self, windows_by_workspaces, current_workspace, dpy, conf, float_windows, layout, foci_by_workspace):
-        windows = []
-        for window in windows_by_workspaces[current_workspace]:
-            if not window in float_windows:
-                windows.append(window)
-        count = len(windows)
-        if count == 0:
-            return
         geos = []
+        count = 0
         if layout in ('BSPV', 'BSPH'):
+            windows = []
+            for window in windows_by_workspaces[current_workspace]:
+                if not window in float_windows:
+                    windows.append(window)
+            count = len(windows)
+            if count == 0:
+                return
             geos = self.geometries_bsp(0, count, 0, 0, dpy.screen(
             ).width_in_pixels, dpy.screen().height_in_pixels, 1 if layout == 'BSPV' else 0)
         elif layout == 'Monocle':
+            windows = windows_by_workspaces[current_workspace]
             count = 1
             windows = [windows[foci_by_workspace[current_workspace]]]
-            geos = self.geometries_bsp(0, 1, 0, 0, dpy.screen(
-            ).width_in_pixels, dpy.screen().height_in_pixels)
+            geos = self.geometries_bsp(0, 1, 0, 0, dpy.screen().width_in_pixels, dpy.screen().height_in_pixels)
         for i in range(count):
             geo = geos[i]
             windows[i].configure(x=geo[0], y=geo[1], width=geo[2] -
