@@ -20,9 +20,9 @@ class YazgooWM:
             return []
         if window_count == 1:
             return [[left, top, width, height]]
-        if (i + vertical) % 2 == 0:
-            return [[left, top, width, height / 2]] + self.geometries_bsp(i + 1, window_count - 1, left, top + height / 2, width, height / 2)
-        return [[left, top, width / 2, height]] + self.geometries_bsp(i + 1, window_count - 1, left + width / 2, top, width / 2, height)
+        if i % 2 == vertical:
+            return [[left, top, width, height / 2]] + self.geometries_bsp(i + 1, window_count - 1, left, top + height / 2, width, height / 2, vertical)
+        return [[left, top, width / 2, height]] + self.geometries_bsp(i + 1, window_count - 1, left + width / 2, top, width / 2, height, vertical)
 
     def resize_workspace_windows(self, windows_by_workspaces, current_workspace, dpy, conf, float_windows, layout, foci_by_workspace):
         geos = []
@@ -39,6 +39,8 @@ class YazgooWM:
             ).width_in_pixels, dpy.screen().height_in_pixels, 1 if layout == 'BSPV' else 0)
         elif layout == 'Monocle':
             windows = windows_by_workspaces[current_workspace]
+            if len(windows) == 0:
+                return
             count = 1
             windows = [windows[foci_by_workspace[current_workspace]]]
             geos = self.geometries_bsp(0, 1, 0, 0, dpy.screen().width_in_pixels, dpy.screen().height_in_pixels)
@@ -49,9 +51,8 @@ class YazgooWM:
 
     def configure_window_border(self, windows_by_workspaces, current_workspace, foci_by_workspace, conf, border_colors, border_kind, stack_mode):
         window = windows_by_workspaces[current_workspace][foci_by_workspace[current_workspace]]
-        window.configure(border_width=conf["border"]["width"])
+        window.configure(border_width=conf["border"]["width"], stack_mode=stack_mode)
         window.change_attributes(None, border_pixel=border_colors[border_kind])
-        window.configure(stack_mode=stack_mode)
         return window
 
     def get_wm_class(self, event):
@@ -150,11 +151,14 @@ class YazgooWM:
         if window_count > 0:
             self.configure_window_border(self.windows_by_workspaces, self.current_workspace,
                                     self.foci_by_workspace, self.conf, self.border_colors, "normal", X.Below)
+            self.dpy.sync()
             self.foci_by_workspace[self.current_workspace] += 1
             self.foci_by_workspace[self.current_workspace] = self.foci_by_workspace[self.current_workspace] % window_count
             window = self.configure_window_border(
                 self.windows_by_workspaces, self.current_workspace, self.foci_by_workspace, self.conf, self.border_colors, "focus", X.Above)
-            window.set_input_focus(X.RevertToParent, 0)
+            window.set_input_focus(X.RevertToParent, X.CurrentTime)
+            self.resize_workspace_windows(self.windows_by_workspaces, self.current_workspace, self.dpy, self.conf, self.float_windows,
+                    self.layouts[self.layouts_by_workspaces[self.current_workspace]], self.foci_by_workspace)
             self.dpy.sync()
 
     def change_layout(self):
