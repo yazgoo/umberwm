@@ -121,10 +121,9 @@ class YazgooWM:
                 if event.window in self.float_windows:
                     self.float_windows.remove(event.window)
                 workspace_windows.remove(event.window)
-                if self.current_workspace == workspace:
-                    self.foci_by_workspace[self.current_workspace] = 0
+                self.foci_by_workspace[workspace] = 0
                 self.resize_workspace_windows(self.windows_by_workspaces, workspace, self.dpy, self.conf, self.float_windows,
-                                         self.layouts[self.layouts_by_workspaces[self.current_workspace]], self.foci_by_workspace)
+                                         self.layouts[self.layouts_by_workspaces[workspace]], self.foci_by_workspace)
 
     def change_workspace(self, event):
         if event.state & X.ShiftMask and len(self.windows_by_workspaces[self.current_workspace]) > 0:
