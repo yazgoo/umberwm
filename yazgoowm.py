@@ -24,7 +24,7 @@ class YazgooWM:
             return [[left, top, width, height / 2]] + self.geometries_bsp(i + 1, window_count - 1, left, top + height / 2, width, height / 2)
         return [[left, top, width / 2, height]] + self.geometries_bsp(i + 1, window_count - 1, left + width / 2, top, width / 2, height)
 
-    def resize_workspace_windows(self, windows_by_workspaces, current_workspace, dpy, conf, float_windows, layout, current_focus):
+    def resize_workspace_windows(self, windows_by_workspaces, current_workspace, dpy, conf, float_windows, layout, foci_by_workspace):
         windows = []
         for window in windows_by_workspaces[current_workspace]:
             if not window in float_windows:
@@ -38,7 +38,7 @@ class YazgooWM:
             ).width_in_pixels, dpy.screen().height_in_pixels, 1 if layout == 'BSPV' else 0)
         elif layout == 'Monocle':
             count = 1
-            windows = [windows[current_focus]]
+            windows = [windows[foci_by_workspace[current_workspace]]]
             geos = self.geometries_bsp(0, 1, 0, 0, dpy.screen(
             ).width_in_pixels, dpy.screen().height_in_pixels)
         for i in range(count):
@@ -46,8 +46,8 @@ class YazgooWM:
             windows[i].configure(x=geo[0], y=geo[1], width=geo[2] -
                                  2 * conf["border"]["width"], height=geo[3] - 2 * conf["border"]["width"])
 
-    def configure_window_border(self, windows_by_workspaces, current_workspace, current_focus, conf, border_colors, border_kind, stack_mode):
-        window = windows_by_workspaces[current_workspace][current_focus]
+    def configure_window_border(self, windows_by_workspaces, current_workspace, foci_by_workspace, conf, border_colors, border_kind, stack_mode):
+        window = windows_by_workspaces[current_workspace][foci_by_workspace[current_workspace]]
         window.configure(border_width=conf["border"]["width"])
         window.change_attributes(None, border_pixel=border_colors[border_kind])
         window.configure(stack_mode=stack_mode)
@@ -91,8 +91,8 @@ class YazgooWM:
         self.float_windows = []
         self.windows_by_workspaces = {workspace: [] for workspace in conf["workspaces"]}
         self.layouts_by_workspaces = {workspace: 0 for workspace in conf["workspaces"]}
+        self.foci_by_workspace = {workspace: 0 for workspace in conf["workspaces"]}
         self.mouse_move_start = None
-        self.current_focus = 0
         self.border_colors = {name : self.dpy.screen().default_colormap.alloc_named_color(conf["border"][name]).pixel for name in ["focus", "normal"]}
         self.auto_float_types = [self.dpy.intern_atom('_NET_WM_WINDOW_TYPE_' + typ.upper()) for typ in conf["float_types"]]
 
@@ -108,11 +108,12 @@ class YazgooWM:
         self.windows_by_workspaces[self.current_workspace].append(event.window)
         float_window = ((window_type is not None and window_type.value[0] in self.auto_float_types) or (
             wm_class is not None and wm_class[0] in self.conf["float_classes"]))
+        self.foci_by_workspace[self.current_workspace] = len(self.windows_by_workspaces[self.current_workspace]) - 1
         if float_window:
             self.float_windows.append(event.window)
         else:
             self.resize_workspace_windows(self.windows_by_workspaces, self.current_workspace, self.dpy, self.conf, self.float_windows,
-                                     self.layouts[self.layouts_by_workspaces[self.current_workspace]], self.current_focus)
+                                     self.layouts[self.layouts_by_workspaces[self.current_workspace]], self.foci_by_workspace)
 
     def destroy_window(self, event):
         for workspace, workspace_windows in self.windows_by_workspaces.items():
@@ -120,33 +121,38 @@ class YazgooWM:
                 if event.window in self.float_windows:
                     self.float_windows.remove(event.window)
                 workspace_windows.remove(event.window)
-                self.resize_workspace_windows(self.windows_by_workspaces, workspace, self.dpy, self.conf, self.float_windows,
-                                         self.layouts[self.layouts_by_workspaces[self.current_workspace]], self.current_focus)
                 if self.current_workspace == workspace:
-                    self.current_focus = 0
+                    self.foci_by_workspace[self.current_workspace] = 0
+                self.resize_workspace_windows(self.windows_by_workspaces, workspace, self.dpy, self.conf, self.float_windows,
+                                         self.layouts[self.layouts_by_workspaces[self.current_workspace]], self.foci_by_workspace)
 
     def change_workspace(self, event):
         if event.state & X.ShiftMask and len(self.windows_by_workspaces[self.current_workspace]) > 0:
-            window = self.windows_by_workspaces[self.current_workspace][self.current_focus]
+            window = self.windows_by_workspaces[self.current_workspace][self.foci_by_workspace[self.current_workspace]]
             self.windows_by_workspaces[self.current_workspace].remove(window)
             destination_workspace = self.keycode_to_char(self.dpy, event.detail)
             self.windows_by_workspaces[destination_workspace].append(window)
+            for workspace in (self.current_workspace, destination_workspace):
+                self.resize_workspace_windows(self.windows_by_workspaces, workspace, self.dpy, self.conf, self.float_windows,
+                    self.layouts[self.layouts_by_workspaces[workspace]], self.foci_by_workspace)
         for window in self.windows_by_workspaces[self.current_workspace]:
             window.unmap()
         self.current_workspace = self.keycode_to_char(self.dpy, event.detail)
         for window in self.windows_by_workspaces[self.current_workspace]:
             window.map()
-        self.current_focus = 0
+        if len(self.windows_by_workspaces[self.current_workspace]) > 0:
+            window = self.windows_by_workspaces[self.current_workspace][self.foci_by_workspace[self.current_workspace]]
+            window.set_input_focus(X.RevertToParent, 0)
 
     def switch_window(self):
         window_count = len(self.windows_by_workspaces[self.current_workspace])
         if window_count > 0:
             self.configure_window_border(self.windows_by_workspaces, self.current_workspace,
-                                    self.current_focus, self.conf, self.border_colors, "normal", X.Below)
-            self.current_focus += 1
-            self.current_focus = self.current_focus % window_count
+                                    self.foci_by_workspace, self.conf, self.border_colors, "normal", X.Below)
+            self.foci_by_workspace[self.current_workspace] += 1
+            self.foci_by_workspace[self.current_workspace] = self.foci_by_workspace[self.current_workspace] % window_count
             window = self.configure_window_border(
-                self.windows_by_workspaces, self.current_workspace, self.current_focus, self.conf, self.border_colors, "focus", X.Above)
+                self.windows_by_workspaces, self.current_workspace, self.foci_by_workspace, self.conf, self.border_colors, "focus", X.Above)
             window.set_input_focus(X.RevertToParent, 0)
             self.dpy.sync()
 
@@ -154,12 +160,12 @@ class YazgooWM:
         self.layouts_by_workspaces[self.current_workspace] = (
             self.layouts_by_workspaces[self.current_workspace] + 1) % len(self.layouts)
         self.resize_workspace_windows(self.windows_by_workspaces, self.current_workspace, self.dpy, self.conf, self.float_windows,
-                                 self.layouts[self.layouts_by_workspaces[self.current_workspace]], self.current_focus)
+                                 self.layouts[self.layouts_by_workspaces[self.current_workspace]], self.foci_by_workspace)
 
     def close_window(self):
         window_count = len(self.windows_by_workspaces[self.current_workspace])
         if window_count > 0:
-            window = self.windows_by_workspaces[self.current_workspace][self.current_focus]
+            window = self.windows_by_workspaces[self.current_workspace][self.foci_by_workspace[self.current_workspace]]
             self.windows_by_workspaces[self.current_workspace].remove(window)
             window.destroy()
 
