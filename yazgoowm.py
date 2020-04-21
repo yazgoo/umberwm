@@ -110,13 +110,13 @@ class YazgooWM:
         self.conf = conf
 
     def setup_new_window(self, event):
-        event.window.configure(border_width=self.conf["border"]["width"])
         wm_class = self.get_wm_class(event)
         if wm_class is None:
             return
         window_type = self.get_window_type(self.dpy, event)
         if window_type is not None and window_type.value[0] in self.auto_float_types:
             return
+        event.window.configure(border_width=self.conf["border"]["width"])
         self.windows_by_workspaces[self.current_workspace].append(event.window)
         float_window = wm_class is not None and wm_class[0] in self.conf["float_classes"]
         self.foci_by_workspace[self.current_workspace] = len(self.windows_by_workspaces[self.current_workspace]) - 1
@@ -228,6 +228,6 @@ YazgooWM(
         "wm_actions": {" ": 'switch_window', "w": 'close_window', "f": 'change_layout'},
         "float_classes": ('screenkey', 'audacious', 'Download', 'dropbox', 'file_progress', 'file-roller', 'gimp',
                           'Komodo_confirm_repl', 'Komodo_find2', 'pidgin', 'skype', 'Transmission', 'Update', 'Xephyr', 'obs', 'zoom'),
-        "auto_float_types": ('notification', 'toolbar', 'splash', 'dialog'),
+        "auto_float_types": ('notification', 'toolbar', 'splash', 'dialog', 'popup_menu', 'utility', 'tooltip'),
         }
         ).run()
