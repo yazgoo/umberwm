@@ -5,6 +5,14 @@ from Xlib import X, XK, Xatom, error, display
 
 class YazgooWM:
 
+    def get_or_first(self, lst, index):
+        count = len(lst)
+        if count == 0:
+            return None
+        if index < count:
+            return lst[index]
+        return lst[0]
+
     def string_to_keycode(self, dpy, key):
         return dpy.keysym_to_keycode(XK.string_to_keysym(key))
 
@@ -42,7 +50,7 @@ class YazgooWM:
             if len(windows) == 0:
                 return
             count = 1
-            windows = [windows[foci_by_workspace[current_workspace]]]
+            windows = [self.get_or_first(windows, foci_by_workspace[current_workspace])]
             geos = self.geometries_bsp(0, 1, 0, 0, dpy.screen().width_in_pixels, dpy.screen().height_in_pixels)
         for i in range(count):
             geo = geos[i]
@@ -50,7 +58,7 @@ class YazgooWM:
                                  2 * conf["border"]["width"], height=geo[3] - 2 * conf["border"]["width"])
 
     def configure_window_border(self, windows_by_workspaces, current_workspace, foci_by_workspace, conf, border_colors, border_kind, stack_mode):
-        window = windows_by_workspaces[current_workspace][foci_by_workspace[current_workspace]]
+        window = self.get_or_first(windows_by_workspaces[current_workspace], foci_by_workspace[current_workspace])
         window.configure(border_width=conf["border"]["width"], stack_mode=stack_mode)
         window.change_attributes(None, border_pixel=border_colors[border_kind])
         return window
@@ -129,7 +137,7 @@ class YazgooWM:
 
     def change_workspace(self, event):
         if event.state & X.ShiftMask and len(self.windows_by_workspaces[self.current_workspace]) > 0:
-            window = self.windows_by_workspaces[self.current_workspace][self.foci_by_workspace[self.current_workspace]]
+            window = self.get_or_first(self.windows_by_workspaces[self.current_workspace], self.foci_by_workspace[self.current_workspace])
             self.windows_by_workspaces[self.current_workspace].remove(window)
             self.foci_by_workspace[self.current_workspace] = 0
             destination_workspace = self.keycode_to_char(self.dpy, event.detail)
@@ -143,7 +151,7 @@ class YazgooWM:
         for window in self.windows_by_workspaces[self.current_workspace]:
             window.map()
         if len(self.windows_by_workspaces[self.current_workspace]) > 0:
-            window = self.windows_by_workspaces[self.current_workspace][self.foci_by_workspace[self.current_workspace]]
+            window = self.get_or_first(self.windows_by_workspaces[self.current_workspace], self.foci_by_workspace[self.current_workspace])
             window.set_input_focus(X.RevertToParent, 0)
 
     def switch_window(self):
@@ -170,7 +178,7 @@ class YazgooWM:
     def close_window(self):
         window_count = len(self.windows_by_workspaces[self.current_workspace])
         if window_count > 0:
-            window = self.windows_by_workspaces[self.current_workspace][self.foci_by_workspace[self.current_workspace]]
+            window = self.get_or_first(self.windows_by_workspaces[self.current_workspace], self.foci_by_workspace[self.current_workspace])
             self.windows_by_workspaces[self.current_workspace].remove(window)
             window.destroy()
 
