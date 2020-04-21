@@ -104,7 +104,7 @@ class YazgooWM:
         self.foci_by_workspace = {workspace: 0 for workspace in conf["workspaces"]}
         self.mouse_move_start = None
         self.border_colors = {name : self.dpy.screen().default_colormap.alloc_named_color(conf["border"][name]).pixel for name in ["focus", "normal"]}
-        self.auto_float_types = [self.dpy.intern_atom('_NET_WM_WINDOW_TYPE_' + typ.upper()) for typ in conf["float_types"]]
+        self.auto_float_types = [self.dpy.intern_atom('_NET_WM_WINDOW_TYPE_' + typ.upper()) for typ in conf["auto_float_types"]]
 
         self.enable_event_listening(self.dpy, conf)
         self.conf = conf
@@ -115,9 +115,10 @@ class YazgooWM:
         if wm_class is None:
             return
         window_type = self.get_window_type(self.dpy, event)
+        if window_type is not None and window_type.value[0] in self.auto_float_types:
+            return
         self.windows_by_workspaces[self.current_workspace].append(event.window)
-        float_window = ((window_type is not None and window_type.value[0] in self.auto_float_types) or (
-            wm_class is not None and wm_class[0] in self.conf["float_classes"]))
+        float_window = wm_class is not None and wm_class[0] in self.conf["float_classes"]
         self.foci_by_workspace[self.current_workspace] = len(self.windows_by_workspaces[self.current_workspace]) - 1
         if float_window:
             self.float_windows.append(event.window)
@@ -227,6 +228,6 @@ YazgooWM(
         "wm_actions": {" ": 'switch_window', "w": 'close_window', "f": 'change_layout'},
         "float_classes": ('screenkey', 'audacious', 'Download', 'dropbox', 'file_progress', 'file-roller', 'gimp',
                           'Komodo_confirm_repl', 'Komodo_find2', 'pidgin', 'skype', 'Transmission', 'Update', 'Xephyr', 'obs', 'zoom'),
-        "float_types": ('notification', 'toolbar', 'splash', 'dialog'),
+        "auto_float_types": ('notification', 'toolbar', 'splash', 'dialog'),
         }
         ).run()
