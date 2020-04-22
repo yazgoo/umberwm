@@ -1,0 +1,16 @@
+[package]
+name = "yazgoowm"
+version = "0.0.1"
+authors = ["yazgoo <yazgoo@gmail.com>"]
+edition = "2018"
+license = "MIT"
+description = "minimalist X11 window manager"
+readme = "README.md"
+homepage = "https://github.com/yazgoo/yazgoowm"
+repository = "https://github.com/yazgoo/yazgoowm"
+keywords = ["wm", "x11", "terminal"]
+categories = ["command-line-utilities"]
+
+[dependencies]
+x11-wrapper = { git="https://github.com/jutuon/x11-wrapper.git"}
+x11 = "2.17"
