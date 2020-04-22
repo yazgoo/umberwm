@@ -12,5 +12,4 @@ keywords = ["wm", "x11", "terminal"]
 categories = ["command-line-utilities"]
 
 [dependencies]
-x11-wrapper = { git="https://github.com/jutuon/x11-wrapper.git"}
-x11 = "2.17"
+xcb = "0.9"

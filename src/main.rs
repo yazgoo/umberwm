@@ -1,10 +1,7 @@
-extern crate x11_wrapper;
+extern crate xcb;
 
 use std::collections::HashMap;
-
-use x11_wrapper::core::display::X11Display;
-use x11_wrapper::core::XlibHandle;
-use x11::xlib::Window;
+use xcb::Window;
 
 enum Actions {
     SwitchWindow, CloseWindow, ChangeLayout,
@@ -37,7 +34,7 @@ struct Workspace {
 struct Conf {
     meta: String,
     border: Border,
-    workspaceNames: Vec<WorkspaceName>,
+    workspaces_names: Vec<WorkspaceName>,
     custom_actions: HashMap<Key, CustomAction>,
     wm_actions: HashMap<String, Actions>,
     float_classes: Vec<String>,
@@ -45,15 +42,36 @@ struct Conf {
 }
 
 struct Yazgoo {
-    dpy: X11Display,
     current_workspace: WorkspaceName,
     float_windows: Vec<Window>,
     workspaces: HashMap<WorkspaceName, Workspace>,
 }
 
 fn main() -> Result<(), ()> {
-    let xlib_handle = XlibHandle::initialize_xlib().unwrap();
-    let dpy = xlib_handle.create_display()?;
-    
-    return Ok(())
+    let conf = Conf {
+        meta: String::from("mod1"),
+        border: Border {
+            width: 2,
+            focus_color: String::from("#906cff"),
+            normal_color: String::from("black"),
+        },
+        workspaces_names: vec![ 'a', 'u', 'i', 'o', 'p' ],
+        custom_actions: HashMap::new(),
+        wm_actions: HashMap::new(),
+        float_classes: vec![],
+        auto_float_types: vec![],
+    };
+    let (conn, screen_num) = xcb::Connection::connect(None).unwrap();
+    let setup = conn.get_setup();
+    let screen = setup.roots().nth(0).unwrap();
+    xcb::grab_key(&conn, false, screen.root(), xcb::MOD_MASK_ANY as u16, xcb::GRAB_ANY as u8, xcb::GRAB_MODE_ASYNC as u8, xcb::GRAB_MODE_ASYNC as u8);
+    conn.flush();
+    loop {
+        println!("in loop");
+        let event = conn.wait_for_event();
+        println!("event");
+        conn.flush();
+    }
+
+    Ok(())
 }
