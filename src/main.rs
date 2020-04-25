@@ -1,7 +1,6 @@
 extern crate xcb;
 
 use std::collections::HashMap;
-use xcb::Window;
 use std::process::Command;
 
 enum Actions {
@@ -11,6 +10,8 @@ enum Actions {
 enum Layout {
     BSPV, Monocle, BSPH
 }
+
+type Window = u32;
 
 type Key = char;
 
@@ -101,11 +102,52 @@ impl YazgooWM {
                 xcb::grab_key(&self.conn, false, screen.root(), mod_mask as u16, key_to_keycode(custom_action_key).unwrap(), xcb::GRAB_MODE_ASYNC as u8, xcb::GRAB_MODE_ASYNC as u8);
             }
         }
+        xcb::change_window_attributes(&self.conn, screen.root(), &[(xcb::CW_EVENT_MASK, xcb::EVENT_MASK_SUBSTRUCTURE_NOTIFY as u32)]);
         self.conn.flush();
     }
 
     fn change_workspace(&mut self, workspace: WorkspaceName, move_window: bool) {
+        println!("change worspace");
+        match self.workspaces.get(&self.current_workspace) {
+            Some(previous_workspace) => {
+                for window in &previous_workspace.windows {
+                    println!("unmap");
+                    xcb::unmap_window(&self.conn, *window);
+                }
+            }
+            None => {}
+        };
         self.current_workspace = workspace;
+        match self.workspaces.get(&self.current_workspace) {
+            Some(previous_workspace) => {
+                for window in &previous_workspace.windows {
+                    println!("map");
+                    xcb::map_window(&self.conn, *window);
+                }
+            }
+            None => {}
+        };
+    }
+
+    fn setup_new_window(&mut self, window: u32) {
+        println!("setup new window");
+        match self.workspaces.get_mut(&self.current_workspace) {
+            Some(workspace) => {
+                println!("push window");
+                workspace.windows.push(window);
+            },
+            None => {
+                println!("current workspace not found");
+            },
+        }
+    }
+
+    fn destroy_window(&mut self, window: u32) {
+        for (_, workspace) in &mut self.workspaces {
+            if workspace.windows.contains(&window) {
+                workspace.windows.retain(|&x| x != window);
+            }
+        }
     }
 
     fn run(&mut self) {
@@ -115,7 +157,19 @@ impl YazgooWM {
                 Some(event) => {
                     println!("event");
                     let r = event.response_type();
-                    if r == xcb::KEY_PRESS as u8 {
+                    if r == xcb::MAP_NOTIFY as u8 {
+                        let map_notify : &xcb::MapNotifyEvent = unsafe {
+                            xcb::cast_event(&event)
+                        };
+                        self.setup_new_window(map_notify.window());
+                    }
+                    if r == xcb::DESTROY_NOTIFY as u8 {
+                        let map_notify : &xcb::DestroyNotifyEvent = unsafe {
+                            xcb::cast_event(&event)
+                        };
+                        self.destroy_window(map_notify.window());
+                    }
+                    else if r == xcb::KEY_PRESS as u8 {
                         let key_press : &xcb::KeyPressEvent = unsafe {
                             xcb::cast_event(&event)
                         };
@@ -178,11 +232,17 @@ fn main() -> Result<(), ()> {
     };
 
     let (conn, _) = xcb::Connection::connect(None).unwrap();
+    let workspaces = conf.workspaces_names.clone().into_iter().map( |x|
+            (x, Workspace {
+                layout: Layout::BSPV,
+                windows: vec![],
+                focus: 0,
+        })).into_iter().collect();
     let mut wm = YazgooWM {
         conf: conf,
         current_workspace: 'a',
         float_windows: vec![],
-        workspaces: HashMap::new(),
+        workspaces: workspaces,
         conn: conn,
     };
 
