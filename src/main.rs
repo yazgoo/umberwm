@@ -2,6 +2,8 @@ extern crate xcb;
 
 use std::collections::HashMap;
 use std::process::Command;
+use xcb::xproto;
+use std::error::Error;
 
 enum Actions {
     SwitchWindow, CloseWindow, ChangeLayout,
@@ -20,6 +22,8 @@ type WorkspaceName = Key;
 type CustomAction = Box<dyn Fn() -> ()>;
 
 type Color = String;
+
+struct Geometry(u32, u32, u32, u32);
 
 struct Border {
     width: u8,
@@ -89,11 +93,30 @@ fn key_to_keycode(key: &Key) -> Option<u8> {
     }
 }
 
+    fn geometries_bsp(i: usize, window_count: usize, left: u32, top: u32, width: u32, height: u32, vertical: usize) -> Vec<Geometry> {
+        if window_count == 0 {
+            vec![]
+        }
+        else if window_count == 1 {
+            vec![Geometry(left, top, width, height)]
+        }
+        else if i % 2 == vertical {
+            let mut res = vec![Geometry(left, top, width, height / 2)];
+            res.append(
+                &mut geometries_bsp(i + 1, window_count - 1, left, top + height / 2, width, height / 2, vertical));
+            res
+        }
+        else {
+            let mut res = vec![Geometry(left, top, width / 2, height)];
+            res.append(
+                &mut geometries_bsp(i + 1, window_count - 1, left + width / 2, top, width / 2, height, vertical));
+            res
+        }
+    }
 impl YazgooWM {
 
     fn init(&mut self) {
-        let setup = self.conn.get_setup();
-        let screen = setup.roots().nth(0).unwrap();
+        let screen = self.conn.get_setup().roots().nth(0).unwrap();
         for mod_mask in vec![xcb::MOD_MASK_1, xcb::MOD_MASK_1 | xcb::MOD_MASK_SHIFT] {
             for workspace_name in &self.conf.workspaces_names {
                 xcb::grab_key(&self.conn, false, screen.root(), mod_mask as u16, key_to_keycode(workspace_name).unwrap(), xcb::GRAB_MODE_ASYNC as u8, xcb::GRAB_MODE_ASYNC as u8);
@@ -129,13 +152,65 @@ impl YazgooWM {
         };
     }
 
+
+    fn resize_workspace_windows(&self, workspace: &Workspace) {
+        let count = workspace.windows.len();
+        let screen = self.conn.get_setup().roots().nth(0).unwrap();
+        let geos = geometries_bsp(0, count, 0, 0, screen.width_in_pixels() as u32, screen.height_in_pixels() as u32, 1);
+        for (i, geo) in geos.iter().enumerate() {
+            match workspace.windows.get(i) {
+                Some(window) => {xcb::configure_window(&self.conn, *window, &[
+                        (xcb::CONFIG_WINDOW_X as u16, geo.0),
+                        (xcb::CONFIG_WINDOW_Y as u16, geo.1),
+                        (xcb::CONFIG_WINDOW_WIDTH as u16, geo.2),
+                        (xcb::CONFIG_WINDOW_HEIGHT as u16, geo.3)
+                ]
+                    );},
+                None => {}
+            }
+        }
+    }
+
+    fn get_str_property(&mut self, window: u32, name: &str) -> Option<String> {
+        let _net_wm_window_type = xcb::intern_atom(&self.conn, false, name).get_reply().unwrap().atom();
+        let cookie = xcb::get_property(&self.conn, false, window, _net_wm_window_type, xcb::ATOM_ANY, 0, 1024);
+        if let Ok(reply) = cookie.get_reply() {
+            Some(std::str::from_utf8(reply.value()).unwrap().to_string())
+        } else {
+            None
+        }
+    }
+
+    fn get_atom_property(&mut self, id: u32, name: &str) -> Result<u32, Box<Error>> {
+        let window: xproto::Window = id;
+        let ident = xcb::intern_atom(&self.conn, true, "_NET_WM_WINDOW_TYPE").get_reply()?.atom();
+        let reply = xproto::get_property(&self.conn, false, window, ident, xproto::ATOM_ATOM, 0, 1024).get_reply()?;
+        print!("REPLY format {}\n", reply.format());
+        print!("REPLY len {}\n", reply.value_len());
+        Ok(0)
+    }
+
     fn setup_new_window(&mut self, window: u32) {
+        let wm_class = self.get_str_property(window, "WM_CLASS").unwrap();
+        let window_type = self.get_atom_property(window, "_NET_WM_WINDOW_TYPE").unwrap();
+        let wm_class : Vec<&str> = wm_class.split('\0').collect();
+        println!("window_type: '{:?}', wm_class: '{:?}'", window_type, wm_class);
         println!("setup new window");
         match self.workspaces.get_mut(&self.current_workspace) {
             Some(workspace) => {
                 println!("push window");
-                workspace.windows.push(window);
+                if !workspace.windows.contains(&window) {
+                    workspace.windows.push(window);
+                }
             },
+            None => {
+                println!("current workspace not found");
+            },
+        }
+        match self.workspaces.get(&self.current_workspace) {
+            Some(workspace) => {
+                self.resize_workspace_windows(&workspace);
+            }
             None => {
                 println!("current workspace not found");
             },
