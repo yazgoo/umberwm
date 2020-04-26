@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use std::process::Command;
 use xcb::xproto;
 use std::error::Error;
+use std::env;
 
 enum Actions {
     SwitchWindow, CloseWindow, ChangeLayout,
@@ -40,7 +41,7 @@ struct Workspace {
 }
 
 struct Conf {
-    meta: String,
+    meta: u32,
     border: Border,
     workspaces_names: Vec<WorkspaceName>,
     custom_actions: HashMap<Key, CustomAction>,
@@ -54,6 +55,7 @@ struct YazgooWM {
     current_workspace: WorkspaceName,
     float_windows: Vec<Window>,
     workspaces: HashMap<WorkspaceName, Workspace>,
+    auto_float_types: Vec<xcb::Atom>,
     conn: xcb::Connection,
 }
 
@@ -116,8 +118,10 @@ fn key_to_keycode(key: &Key) -> Option<u8> {
         }
     }
 
-    fn resize_workspace_windows(conn: &xcb::Connection,workspace: &Workspace, border: &Border) {
-        let count = workspace.windows.len();
+    fn resize_workspace_windows(conn: &xcb::Connection,workspace: &Workspace, border: &Border, float_windows: &Vec<u32>) {
+        let mut non_float_windows = workspace.windows.clone();
+        non_float_windows.retain(|w| float_windows.contains(&w));
+        let count = non_float_windows.len();
         let screen = conn.get_setup().roots().nth(0).unwrap();
         let geos = match workspace.layout {
             Layout::BSPV => {
@@ -128,7 +132,7 @@ fn key_to_keycode(key: &Key) -> Option<u8> {
                 geometries_bsp(0, count, 0, 0, screen.width_in_pixels() as u32, screen.height_in_pixels() as u32, 1)},
         };
         for (i, geo) in geos.iter().enumerate() {
-            match workspace.windows.get(i) {
+            match non_float_windows.get(i) {
                 Some(window) => {xcb::configure_window(&conn, *window, &[
                         (xcb::CONFIG_WINDOW_X as u16, geo.0),
                         (xcb::CONFIG_WINDOW_Y as u16, geo.1),
@@ -137,29 +141,47 @@ fn key_to_keycode(key: &Key) -> Option<u8> {
                         (xcb::CONFIG_WINDOW_BORDER_WIDTH as u16, border.width),
                 ]
                     );
-                xcb::change_window_attributes(&conn, *window, &[
-                    (xcb::CW_BORDER_PIXEL, 
-                     if i == workspace.focus {
-                         border.focus_color
-                     } else {
-                         border.normal_color
-                     }
-                     ),
-                ]);
-                if i == workspace.focus {
-                    xcb::set_input_focus(&conn, xcb::INPUT_FOCUS_PARENT as u8, *window, 0);
-                }
                 },
                 None => {}
             }
         }
+        for (i, geo) in workspace.windows.iter().enumerate() {
+            match workspace.windows.get(i) {
+                Some(window) => {
+                    xcb::change_window_attributes(&conn, *window, &[
+                        (xcb::CW_BORDER_PIXEL, 
+                         if i == workspace.focus {
+                             border.focus_color
+                         } else {
+                             border.normal_color
+                         }
+                        ),
+                    ]);
+                    if i == workspace.focus {
+                        xcb::set_input_focus(&conn, xcb::INPUT_FOCUS_PARENT as u8, *window, 0);
+                    }
+                },
+                None =>{}
+            }
+        }
     }
+
+    fn window_types_from_list(conn: &xcb::Connection, types_names: &Vec<String>) -> Vec<xcb::Atom> {
+        types_names.into_iter().map(|x| {
+            let name = format!("_NET_WM_WINDOW_TYPE_{}", x.to_uppercase());
+            let res = xcb::intern_atom(&conn, true, name.as_str()).get_reply().map(|x| x.atom());
+            res.ok()
+        }
+        ).flatten().collect()
+    }
+
 
 impl YazgooWM {
 
     fn init(&mut self) {
         let screen = self.conn.get_setup().roots().nth(0).unwrap();
-        for mod_mask in vec![xcb::MOD_MASK_1, xcb::MOD_MASK_1 | xcb::MOD_MASK_SHIFT] {
+        let mod_key = self.conf.meta;
+        for mod_mask in vec![mod_key, mod_key | xcb::MOD_MASK_SHIFT] {
             for workspace_name in &self.conf.workspaces_names {
                 xcb::grab_key(&self.conn, false, screen.root(), mod_mask as u16, key_to_keycode(workspace_name).unwrap(), xcb::GRAB_MODE_ASYNC as u8, xcb::GRAB_MODE_ASYNC as u8);
             }
@@ -183,7 +205,9 @@ impl YazgooWM {
                 xcb::destroy_window(&self.conn, *window);
             },
             Actions::SwitchWindow => {
-                workspace.focus = (workspace.focus + 1) % workspace.windows.len();
+                if workspace.windows.len() > 0 {
+                    workspace.focus = (workspace.focus + 1) % workspace.windows.len();
+                }
             },
             Actions::ChangeLayout => {
                 workspace.layout = match workspace.layout {
@@ -193,7 +217,7 @@ impl YazgooWM {
                 }
             },
         };
-        resize_workspace_windows(&self.conn, &workspace, &self.conf.border);
+        resize_workspace_windows(&self.conn, &workspace, &self.conf.border, &self.float_windows);
         Ok(())
     }
 
@@ -238,12 +262,18 @@ impl YazgooWM {
     fn setup_new_window(&mut self, window: u32) {
         let wm_class = self.get_str_property(window, "WM_CLASS").unwrap();
         let window_type = self.get_atom_property(window, "_NET_WM_WINDOW_TYPE").unwrap();
+        if self.auto_float_types.contains(&window_type) {
+            return
+        }
         let wm_class : Vec<&str> = wm_class.split('\0').collect();
         match self.workspaces.get_mut(&self.current_workspace) {
             Some(workspace) => {
                 if !workspace.windows.contains(&window) {
+                    if wm_class.len() != 0 && ! self.conf.float_classes.contains(&wm_class[0].to_string()) && !self.float_windows.contains(&window) { 
+                        self.float_windows.push(window);
+                    }
                     workspace.windows.push(window);
-                    resize_workspace_windows(&self.conn, &workspace, &self.conf.border);
+                    resize_workspace_windows(&self.conn, &workspace, &self.conf.border, &self.float_windows);
                 }
             },
             None => {
@@ -252,10 +282,13 @@ impl YazgooWM {
     }
 
     fn destroy_window(&mut self, window: u32) {
+        if self.float_windows.contains(&window) {
+            self.float_windows.retain(|&x| x != window);
+        }
         for (_, workspace) in &mut self.workspaces {
             if workspace.windows.contains(&window) {
                 workspace.windows.retain(|&x| x != window);
-                resize_workspace_windows(&self.conn, &workspace, &self.conf.border);
+                resize_workspace_windows(&self.conn, &workspace, &self.conf.border, &self.float_windows);
                 workspace.focus = 0;
             }
         }
@@ -323,8 +356,14 @@ fn main() -> Result<(), ()> {
     custom_actions.insert('t', Box::new(|| { Command::new("kitty").spawn();}));
     custom_actions.insert('q', Box::new(|| std::process::exit(0)));
 
+    let auto_float_types : Vec<String> = vec!["notification", "toolbar", "splash", "dialog", "popup_menu", "utility", "tooltip"].into_iter().map( |x|
+            x.to_string()
+        ).collect();
+
+
+    let args: Vec<String> = env::args().collect();
     let conf = Conf {
-        meta: String::from("mod1"),
+        meta: if args[0] == "mod4".to_string() { xcb::MOD_MASK_4 } else { xcb::MOD_MASK_1 },
         border: Border {
             width: 2,
             focus_color: 0x906cff,
@@ -337,9 +376,7 @@ fn main() -> Result<(), ()> {
                           "Komodo_confirm_repl", "Komodo_find2", "pidgin", "skype", "Transmission", "Update", "Xephyr", "obs"].into_iter().map( |x|
             x.to_string()
         ).collect(),
-        auto_float_types: vec!["notification", "toolbar", "splash", "dialog", "popup_menu", "utility", "tooltip"].into_iter().map( |x|
-            x.to_string()
-        ).collect(),
+        auto_float_types: auto_float_types.clone(),
     };
 
     let (conn, _) = xcb::Connection::connect(None).unwrap();
@@ -354,6 +391,7 @@ fn main() -> Result<(), ()> {
         current_workspace: 'a',
         float_windows: vec![],
         workspaces: workspaces,
+        auto_float_types: window_types_from_list(&conn, &auto_float_types),
         conn: conn,
     };
 
