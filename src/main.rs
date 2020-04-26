@@ -41,7 +41,7 @@ struct Workspace {
 }
 
 struct Conf {
-    meta: u32,
+    meta: xcb::ModMask,
     border: Border,
     workspaces_names: Vec<WorkspaceName>,
     custom_actions: HashMap<Key, CustomAction>,
@@ -95,6 +95,48 @@ fn key_to_keycode(key: &Key) -> Option<u8> {
         Some(x) => Some(*x),
         None => None
     }
+}
+
+
+fn unmap_workspace_windows(conn: &xcb::Connection, windows: &mut Vec<Window>, focus: usize, move_window: bool) -> Option<Window> {
+    let mut window_to_move = None;
+    for (i, window) in windows.iter().enumerate() {
+        if move_window && i == focus {
+            window_to_move = Some(*window);
+        }
+        else {
+            xcb::unmap_window(conn, *window);
+        }
+    }
+    window_to_move
+}
+
+fn change_workspace(conn: &xcb::Connection, workspaces: &mut HashMap<WorkspaceName, Workspace>, previous_workspace: WorkspaceName, next_workspace: WorkspaceName, move_window: bool) -> Result<WorkspaceName, Box<dyn Error>> {
+    let workspace = workspaces.get_mut(&previous_workspace).ok_or("workspace not found")?;
+    let window_to_move = unmap_workspace_windows(conn, &mut workspace.windows, workspace.focus, move_window);
+    match window_to_move {
+        Some(w) => {
+            workspace.windows.retain( |x| *x != w );
+            if workspace.windows.len() > 0 {
+                workspace.focus = workspace.windows.len() - 1;
+            }
+            else {
+                workspace.focus = 0;
+            }
+        },
+        None => {},
+    };
+    let workspace = workspaces.get_mut(&next_workspace).ok_or("workspace not found")?;
+    for window in &workspace.windows {
+        xcb::map_window(conn, *window);
+    }
+    window_to_move.map( 
+        |w| { 
+            workspace.windows.push(w);
+            workspace.focus = workspace.windows.len() - 1;
+        }
+    );
+    Ok(next_workspace)
 }
 
     fn geometries_bsp(i: usize, window_count: usize, left: u32, top: u32, width: u32, height: u32, vertical: usize) -> Vec<Geometry> {
@@ -221,25 +263,6 @@ impl YazgooWM {
         Ok(())
     }
 
-    fn change_workspace(&mut self, workspace: WorkspaceName, move_window: bool) {
-        match self.workspaces.get(&self.current_workspace) {
-            Some(previous_workspace) => {
-                for window in &previous_workspace.windows {
-                    xcb::unmap_window(&self.conn, *window);
-                }
-            }
-            None => {}
-        };
-        self.current_workspace = workspace;
-        match self.workspaces.get(&self.current_workspace) {
-            Some(previous_workspace) => {
-                for window in &previous_workspace.windows {
-                    xcb::map_window(&self.conn, *window);
-                }
-            }
-            None => {}
-        };
-    }
 
 
     fn get_str_property(&mut self, window: u32, name: &str) -> Option<String> {
@@ -319,7 +342,16 @@ impl YazgooWM {
                         match &keycode_to_key(keycode) {
                             Some(key) => {
                                 if self.conf.workspaces_names.contains(key) {
-                                    self.change_workspace(*key, (key_press.state() as u32 ) & xcb::MOD_MASK_SHIFT != 0)
+                                    match change_workspace(&self.conn, &mut self.workspaces, self.current_workspace, *key, (key_press.state() as u32 ) & xcb::MOD_MASK_SHIFT != 0) {
+                                        Ok(workspace) => { 
+                                            self.current_workspace = workspace;
+                                            match self.workspaces.get(&self.current_workspace) {
+                                                Some(workspace) => resize_workspace_windows(&self.conn, &workspace, &self.conf.border, &self.float_windows),
+                                                None => {},
+                                            }
+                                        },
+                                        Err(_) => {},
+                                    };
                                 }
                                 else if self.conf.wm_actions.contains_key(&key) {
                                     self.run_wm_action(&key);
@@ -363,7 +395,7 @@ fn main() -> Result<(), ()> {
 
     let args: Vec<String> = env::args().collect();
     let conf = Conf {
-        meta: if args[0] == "mod4".to_string() { xcb::MOD_MASK_4 } else { xcb::MOD_MASK_1 },
+        meta: if args.len() > 1 && args[1] == "mod4".to_string() { xcb::MOD_MASK_4 } else { xcb::MOD_MASK_1 },
         border: Border {
             width: 2,
             focus_color: 0x906cff,
