@@ -6,11 +6,12 @@ yazgoowm is a minimalistic X window manager based on tinywm, inspired by qtile, 
 
 # design goals and features
 
-  - kiss: only window management (no taskbar, ...), complex stuff should be done using other programs (rofi, ...)
+  - kiss: only window management (no taskbar, system tray, ...), complex stuff should be done using other programs (rofi, ...)
   - configuration as code (like qtile, dwm)
   - tiled by default (Binary space partitioning)
   - supports workspaces
-  - single file, ~200 LoC
+  - two implementations: python and rust
+  - single file (python: ~200 LoC, rust: ~500 LoC)
 
 # using it
 
@@ -18,4 +19,8 @@ put in your .xinitrc
 
 ```shell
 exec /path/to/yazgoowm.py mod4
+```
+or
+```shell
+exec /path/to/yazgoowm mod4
 ```

@@ -30,8 +30,9 @@ type Color = u32;
 #[derive(Clone)]
 struct Geometry(u32, u32, u32, u32);
 
-struct Border {
+struct WindowBorder {
     width: u32,
+    gap: u32,
     focus_color: Color,
     normal_color: Color,
 }
@@ -42,9 +43,17 @@ struct Workspace {
     focus: usize,
 }
 
+struct DisplayBorder {
+    left: u32,
+    right: u32,
+    bottom: u32,
+    top: u32,
+}
+
 struct Conf {
     meta: xcb::ModMask,
-    border: Border,
+    border: WindowBorder,
+    display_border: DisplayBorder,
     workspaces_names: Vec<WorkspaceName>,
     custom_actions: HashMap<Key, CustomAction>,
     wm_actions: HashMap<Key, Actions>,
@@ -171,7 +180,7 @@ fn change_workspace(conn: &xcb::Connection, workspaces: &mut HashMap<WorkspaceNa
         }
     }
 
-    fn resize_workspace_windows(conn: &xcb::Connection,workspace: &Workspace, border: &Border, float_windows: &Vec<u32>) {
+    fn resize_workspace_windows(conn: &xcb::Connection,workspace: &Workspace, border: &WindowBorder, display_border: &DisplayBorder, float_windows: &Vec<u32>) {
         let mut non_float_windows = workspace.windows.clone();
         non_float_windows.retain(|w| float_windows.contains(&w));
         let count = non_float_windows.len();
@@ -179,23 +188,25 @@ fn change_workspace(conn: &xcb::Connection, workspaces: &mut HashMap<WorkspaceNa
             return
         }
         let screen = conn.get_setup().roots().nth(0).unwrap();
+        let width = screen.width_in_pixels() as u32 - display_border.right - display_border.left;
+        let height = screen.height_in_pixels() as u32 - display_border.top - display_border.bottom;
         let geos = match workspace.layout {
             Layout::BSPV => {
-                geometries_bsp(0, count, 0, 0, screen.width_in_pixels() as u32, screen.height_in_pixels() as u32, 1)},
+                geometries_bsp(0, count, display_border.left, display_border.top, width, height, 1)},
             Layout::BSPH => {
-                geometries_bsp(0, count, 0, 0, screen.width_in_pixels() as u32, screen.height_in_pixels() as u32, 0)},
+                geometries_bsp(0, count, display_border.left, display_border.top, width, height, 0)},
             Layout::Monocle => {
-                geometries_bsp(0, 1, 0, 0, screen.width_in_pixels() as u32, screen.height_in_pixels() as u32, 1)},
+                geometries_bsp(0, 1, display_border.left, display_border.top, width, height, 1)},
         };
         match workspace.layout {
             Layout::BSPV | Layout::BSPH => {
                 for (i, geo) in geos.iter().enumerate() {
                     match non_float_windows.get(i) {
                         Some(window) => {xcb::configure_window(&conn, *window, &[
-                            (xcb::CONFIG_WINDOW_X as u16, geo.0),
-                            (xcb::CONFIG_WINDOW_Y as u16, geo.1),
-                            (xcb::CONFIG_WINDOW_WIDTH as u16, geo.2 - 2 * border.width),
-                            (xcb::CONFIG_WINDOW_HEIGHT as u16, geo.3 - 2 * border.width),
+                            (xcb::CONFIG_WINDOW_X as u16, geo.0 + border.gap),
+                            (xcb::CONFIG_WINDOW_Y as u16, geo.1 + border.gap),
+                            (xcb::CONFIG_WINDOW_WIDTH as u16, geo.2 - 2 * border.width - 2 * border.gap),
+                            (xcb::CONFIG_WINDOW_HEIGHT as u16, geo.3 - 2 * border.width - 2 * border.gap),
                             (xcb::CONFIG_WINDOW_BORDER_WIDTH as u16, border.width),
                         ]
                         );
@@ -207,10 +218,10 @@ fn change_workspace(conn: &xcb::Connection, workspaces: &mut HashMap<WorkspaceNa
             Layout::Monocle => {
                 match workspace.windows.get(workspace.focus) {
                     Some(window) => {xcb::configure_window(&conn, *window, &[
-                        (xcb::CONFIG_WINDOW_X as u16, geos[0].0),
-                        (xcb::CONFIG_WINDOW_Y as u16, geos[0].1),
-                        (xcb::CONFIG_WINDOW_WIDTH as u16, geos[0].2 - 2 * border.width),
-                        (xcb::CONFIG_WINDOW_HEIGHT as u16, geos[0].3 - 2 * border.width),
+                        (xcb::CONFIG_WINDOW_X as u16, geos[0].0 + border.gap),
+                        (xcb::CONFIG_WINDOW_Y as u16, geos[0].1 + border.gap),
+                        (xcb::CONFIG_WINDOW_WIDTH as u16, geos[0].2 - 2 * border.width - 2 * border.gap),
+                        (xcb::CONFIG_WINDOW_HEIGHT as u16, geos[0].3 - 2 * border.width - 2 * border.gap),
                         (xcb::CONFIG_WINDOW_BORDER_WIDTH as u16, border.width),
                     ]
                     );
@@ -294,7 +305,7 @@ impl YazgooWM {
                 }
             },
         };
-        resize_workspace_windows(&self.conn, &workspace, &self.conf.border, &self.float_windows);
+        resize_workspace_windows(&self.conn, &workspace, &self.conf.border, &self.conf.display_border, &self.float_windows);
         Ok(())
     }
 
@@ -337,7 +348,7 @@ impl YazgooWM {
                         self.float_windows.push(window);
                     }
                     workspace.windows.push(window);
-                    resize_workspace_windows(&self.conn, &workspace, &self.conf.border, &self.float_windows);
+                    resize_workspace_windows(&self.conn, &workspace, &self.conf.border, &self.conf.display_border, &self.float_windows);
                 }
             },
             None => {
@@ -371,7 +382,7 @@ impl YazgooWM {
         for (_, workspace) in &mut self.workspaces {
             if workspace.windows.contains(&window) {
                 workspace.windows.retain(|&x| x != window);
-                resize_workspace_windows(&self.conn, &workspace, &self.conf.border, &self.float_windows);
+                resize_workspace_windows(&self.conn, &workspace, &self.conf.border, &self.conf.display_border, &self.float_windows);
                 workspace.focus = 0;
             }
         }
@@ -432,7 +443,7 @@ impl YazgooWM {
                                         Ok(workspace) => { 
                                             self.current_workspace = workspace;
                                             match self.workspaces.get(&self.current_workspace) {
-                                                Some(workspace) => resize_workspace_windows(&self.conn, &workspace, &self.conf.border, &self.float_windows),
+                                                Some(workspace) => resize_workspace_windows(&self.conn, &workspace, &self.conf.border, &self.conf.display_border, &self.float_windows),
                                                 None => {},
                                             }
                                         },
@@ -474,7 +485,7 @@ fn main() -> Result<(), ()> {
     custom_actions.insert('t', Box::new(|| { Command::new("kitty").spawn();}));
     custom_actions.insert('q', Box::new(|| std::process::exit(0)));
 
-    let auto_float_types : Vec<String> = vec!["notification", "toolbar", "splash", "dialog", "popup_menu", "utility", "tooltip"].into_iter().map( |x|
+    let auto_float_types : Vec<String> = vec!["notification", "toolbar", "splash", "dialog", "popup_menu", "utility", "tooltip", "dock"].into_iter().map( |x|
             x.to_string()
         ).collect();
 
@@ -482,8 +493,15 @@ fn main() -> Result<(), ()> {
     let args: Vec<String> = env::args().collect();
     let conf = Conf {
         meta: if args.len() > 1 && args[1] == "mod4".to_string() { xcb::MOD_MASK_4 } else { xcb::MOD_MASK_1 },
-        border: Border {
+        display_border: DisplayBorder {
+            left: 0,
+            right: 0,
+            top: 15,
+            bottom: 0,
+        },
+        border: WindowBorder {
             width: 2,
+            gap: 5,
             focus_color: 0x906cff,
             normal_color: 0x000000,
         },
