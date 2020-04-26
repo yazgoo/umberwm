@@ -5,6 +5,7 @@ use std::process::Command;
 use xcb::xproto;
 use std::error::Error;
 use std::env;
+use std::cmp::max;
 
 enum Actions {
     SwitchWindow, CloseWindow, ChangeLayout,
@@ -26,6 +27,7 @@ type CustomAction = Box<dyn Fn() -> ()>;
 
 type Color = u32;
 
+#[derive(Clone)]
 struct Geometry(u32, u32, u32, u32);
 
 struct Border {
@@ -50,12 +52,22 @@ struct Conf {
     auto_float_types: Vec<String>,
 }
 
+#[derive(Clone)]
+struct MouseMoveStart {
+    root_x: i16,
+    root_y: i16,
+    child: Window,
+    detail: u8,
+}
+
 struct YazgooWM {
     conf: Conf,
     current_workspace: WorkspaceName,
     float_windows: Vec<Window>,
     workspaces: HashMap<WorkspaceName, Workspace>,
     conn: xcb::Connection,
+    mouse_move_start: Option<MouseMoveStart>,
+    button_press_geometry: Option<Geometry>,
 }
 
 fn keycode_to_key(keycode: u8) -> Option<Key> {
@@ -167,7 +179,6 @@ fn change_workspace(conn: &xcb::Connection, workspaces: &mut HashMap<WorkspaceNa
             return
         }
         let screen = conn.get_setup().roots().nth(0).unwrap();
-        println!("dimensions: width {} height {}", screen.width_in_pixels(), screen.height_in_pixels());
         let geos = match workspace.layout {
             Layout::BSPV => {
                 geometries_bsp(0, count, 0, 0, screen.width_in_pixels() as u32, screen.height_in_pixels() as u32, 1)},
@@ -233,7 +244,6 @@ fn change_workspace(conn: &xcb::Connection, workspaces: &mut HashMap<WorkspaceNa
         types_names.into_iter().map(|x| {
             let name = format!("_NET_WM_WINDOW_TYPE_{}", x.to_uppercase());
             let res = xcb::intern_atom(&conn, true, name.as_str()).get_reply().map(|x| x.atom());
-            println!("{} == {:?}", name, res);
             res.ok()
         }
         ).flatten().collect()
@@ -255,6 +265,9 @@ impl YazgooWM {
             for custom_action_key in self.conf.wm_actions.keys() {
                 xcb::grab_key(&self.conn, false, screen.root(), mod_mask as u16, key_to_keycode(custom_action_key).unwrap(), xcb::GRAB_MODE_ASYNC as u8, xcb::GRAB_MODE_ASYNC as u8);
             }
+        }
+        for button in vec![1, 3] {
+            xcb::grab_button(&self.conn, false, screen.root(), (xcb::EVENT_MASK_BUTTON_PRESS | xcb::EVENT_MASK_BUTTON_RELEASE | xcb::EVENT_MASK_POINTER_MOTION) as u16, xcb::GRAB_MODE_ASYNC as u8, xcb::GRAB_MODE_ASYNC as u8, xcb::NONE, xcb::NONE, button as u8, mod_key as u16);
         }
         xcb::change_window_attributes(&self.conn, screen.root(), &[(xcb::CW_EVENT_MASK, xcb::EVENT_MASK_SUBSTRUCTURE_NOTIFY as u32)]);
         self.conn.flush();
@@ -332,6 +345,25 @@ impl YazgooWM {
         }
     }
 
+    fn resize_window(&mut self, event: &xcb::MotionNotifyEvent) -> Result<(), Box<dyn Error>> {
+        /* TODO */
+        let mouse_move_start = self.mouse_move_start.clone().ok_or("no mouse move start")?;
+        let attr = self.button_press_geometry.clone().ok_or("no button press geometry")?;
+        let xdiff = event.root_x() - mouse_move_start.root_x;
+        let ydiff = event.root_y() - mouse_move_start.root_y;
+        let x = attr.0 as i32 + if mouse_move_start.detail == 1 { xdiff as i32 } else { 0 };
+        let y = attr.1 as i32 + if mouse_move_start.detail == 1 { ydiff as i32 } else { 0 };
+        let width = max(1, attr.2 as i32 + if mouse_move_start.detail == 3 { xdiff as i32 } else { 0 });
+        let height = max(1, attr.3 as i32 + if mouse_move_start.detail == 3 { ydiff as i32 } else { 0 });
+        xcb::configure_window(&self.conn, mouse_move_start.child, &[
+                            (xcb::CONFIG_WINDOW_X as u16, x as u32),
+                            (xcb::CONFIG_WINDOW_Y as u16, y as u32),
+                            (xcb::CONFIG_WINDOW_WIDTH as u16, width as u32),
+                            (xcb::CONFIG_WINDOW_HEIGHT as u16, height as u32),
+                        ]);
+        Ok(())
+    }
+
     fn destroy_window(&mut self, window: u32) {
         if self.float_windows.contains(&window) {
             self.float_windows.retain(|&x| x != window);
@@ -361,6 +393,32 @@ impl YazgooWM {
                             xcb::cast_event(&event)
                         };
                         self.destroy_window(map_notify.window());
+                    }
+                    else if r == xcb::BUTTON_PRESS as u8 {
+                        let event : &xcb::ButtonPressEvent = unsafe {
+                            xcb::cast_event(&event)
+                        };
+                        match xcb::get_geometry(&self.conn, event.child()).get_reply() {
+                            Ok(geometry) => {self.button_press_geometry = Some(
+                                Geometry(geometry.x() as u32, geometry.y() as u32, geometry.width() as u32, geometry.height() as u32)
+                                );},
+                            Err(_) => {},
+                        }
+                        self.mouse_move_start = Some(MouseMoveStart{
+                            root_x: event.root_x(),
+                            root_y: event.root_y(),
+                            child: event.child(),
+                            detail: event.detail(),
+                        });
+                    }
+                    else if r == xcb::MOTION_NOTIFY as u8 {
+                        let event : &xcb::MotionNotifyEvent = unsafe {
+                            xcb::cast_event(&event)
+                        };
+                        self.resize_window(event);
+                    }
+                    else if r == xcb::BUTTON_RELEASE as u8 {
+                        self.mouse_move_start = None;
                     }
                     else if r == xcb::KEY_PRESS as u8 {
                         let key_press : &xcb::KeyPressEvent = unsafe {
@@ -452,6 +510,8 @@ fn main() -> Result<(), ()> {
         float_windows: vec![],
         workspaces: workspaces,
         conn: conn,
+        button_press_geometry: None,
+        mouse_move_start: None,
     };
 
     wm.init();
