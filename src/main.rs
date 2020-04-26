@@ -10,7 +10,9 @@ enum Actions {
 }
 
 enum Layout {
-    BSPV, Monocle, BSPH
+    BSPV,
+    Monocle,
+    BSPH
 }
 
 type Window = u32;
@@ -21,12 +23,12 @@ type WorkspaceName = Key;
 
 type CustomAction = Box<dyn Fn() -> ()>;
 
-type Color = String;
+type Color = u32;
 
 struct Geometry(u32, u32, u32, u32);
 
 struct Border {
-    width: u8,
+    width: u32,
     focus_color: Color,
     normal_color: Color,
 }
@@ -34,7 +36,7 @@ struct Border {
 struct Workspace {
     layout: Layout,
     windows: Vec<Window>,
-    focus: u32,
+    focus: usize,
 }
 
 struct Conf {
@@ -113,6 +115,46 @@ fn key_to_keycode(key: &Key) -> Option<u8> {
             res
         }
     }
+
+    fn resize_workspace_windows(conn: &xcb::Connection,workspace: &Workspace, border: &Border) {
+        let count = workspace.windows.len();
+        let screen = conn.get_setup().roots().nth(0).unwrap();
+        let geos = match workspace.layout {
+            Layout::BSPV => {
+                geometries_bsp(0, count, 0, 0, screen.width_in_pixels() as u32, screen.height_in_pixels() as u32, 1)},
+            Layout::BSPH => {
+                geometries_bsp(0, count, 0, 0, screen.width_in_pixels() as u32, screen.height_in_pixels() as u32, 0)},
+            Layout::Monocle => {
+                geometries_bsp(0, count, 0, 0, screen.width_in_pixels() as u32, screen.height_in_pixels() as u32, 1)},
+        };
+        for (i, geo) in geos.iter().enumerate() {
+            match workspace.windows.get(i) {
+                Some(window) => {xcb::configure_window(&conn, *window, &[
+                        (xcb::CONFIG_WINDOW_X as u16, geo.0),
+                        (xcb::CONFIG_WINDOW_Y as u16, geo.1),
+                        (xcb::CONFIG_WINDOW_WIDTH as u16, geo.2 - 2 * border.width),
+                        (xcb::CONFIG_WINDOW_HEIGHT as u16, geo.3 - 2 * border.width),
+                        (xcb::CONFIG_WINDOW_BORDER_WIDTH as u16, border.width),
+                ]
+                    );
+                xcb::change_window_attributes(&conn, *window, &[
+                    (xcb::CW_BORDER_PIXEL, 
+                     if i == workspace.focus {
+                         border.focus_color
+                     } else {
+                         border.normal_color
+                     }
+                     ),
+                ]);
+                if i == workspace.focus {
+                    xcb::set_input_focus(&conn, xcb::INPUT_FOCUS_PARENT as u8, *window, 0);
+                }
+                },
+                None => {}
+            }
+        }
+    }
+
 impl YazgooWM {
 
     fn init(&mut self) {
@@ -124,17 +166,41 @@ impl YazgooWM {
             for custom_action_key in self.conf.custom_actions.keys() {
                 xcb::grab_key(&self.conn, false, screen.root(), mod_mask as u16, key_to_keycode(custom_action_key).unwrap(), xcb::GRAB_MODE_ASYNC as u8, xcb::GRAB_MODE_ASYNC as u8);
             }
+            for custom_action_key in self.conf.wm_actions.keys() {
+                xcb::grab_key(&self.conn, false, screen.root(), mod_mask as u16, key_to_keycode(custom_action_key).unwrap(), xcb::GRAB_MODE_ASYNC as u8, xcb::GRAB_MODE_ASYNC as u8);
+            }
         }
         xcb::change_window_attributes(&self.conn, screen.root(), &[(xcb::CW_EVENT_MASK, xcb::EVENT_MASK_SUBSTRUCTURE_NOTIFY as u32)]);
         self.conn.flush();
     }
 
+    fn run_wm_action(&mut self, key: &Key) -> Result<(), Box<dyn Error>> {
+        let action = self.conf.wm_actions.get(&key).ok_or("action not found")?;
+        let workspace = self.workspaces.get_mut(&self.current_workspace).ok_or("workspace not found")?;
+        match action {
+            Actions::CloseWindow => {
+                let window = workspace.windows.get(workspace.focus).ok_or("window not found")?;
+                xcb::destroy_window(&self.conn, *window);
+            },
+            Actions::SwitchWindow => {
+                workspace.focus = (workspace.focus + 1) % workspace.windows.len();
+            },
+            Actions::ChangeLayout => {
+                workspace.layout = match workspace.layout {
+                    Layout::BSPV => Layout::Monocle,
+                    Layout::Monocle => Layout::BSPH,
+                    Layout::BSPH => Layout::BSPV,
+                }
+            },
+        };
+        resize_workspace_windows(&self.conn, &workspace, &self.conf.border);
+        Ok(())
+    }
+
     fn change_workspace(&mut self, workspace: WorkspaceName, move_window: bool) {
-        println!("change worspace");
         match self.workspaces.get(&self.current_workspace) {
             Some(previous_workspace) => {
                 for window in &previous_workspace.windows {
-                    println!("unmap");
                     xcb::unmap_window(&self.conn, *window);
                 }
             }
@@ -144,7 +210,6 @@ impl YazgooWM {
         match self.workspaces.get(&self.current_workspace) {
             Some(previous_workspace) => {
                 for window in &previous_workspace.windows {
-                    println!("map");
                     xcb::map_window(&self.conn, *window);
                 }
             }
@@ -152,24 +217,6 @@ impl YazgooWM {
         };
     }
 
-
-    fn resize_workspace_windows(&self, workspace: &Workspace) {
-        let count = workspace.windows.len();
-        let screen = self.conn.get_setup().roots().nth(0).unwrap();
-        let geos = geometries_bsp(0, count, 0, 0, screen.width_in_pixels() as u32, screen.height_in_pixels() as u32, 1);
-        for (i, geo) in geos.iter().enumerate() {
-            match workspace.windows.get(i) {
-                Some(window) => {xcb::configure_window(&self.conn, *window, &[
-                        (xcb::CONFIG_WINDOW_X as u16, geo.0),
-                        (xcb::CONFIG_WINDOW_Y as u16, geo.1),
-                        (xcb::CONFIG_WINDOW_WIDTH as u16, geo.2),
-                        (xcb::CONFIG_WINDOW_HEIGHT as u16, geo.3)
-                ]
-                    );},
-                None => {}
-            }
-        }
-    }
 
     fn get_str_property(&mut self, window: u32, name: &str) -> Option<String> {
         let _net_wm_window_type = xcb::intern_atom(&self.conn, false, name).get_reply().unwrap().atom();
@@ -185,8 +232,6 @@ impl YazgooWM {
         let window: xproto::Window = id;
         let ident = xcb::intern_atom(&self.conn, true, "_NET_WM_WINDOW_TYPE").get_reply()?.atom();
         let reply = xproto::get_property(&self.conn, false, window, ident, xproto::ATOM_ATOM, 0, 1024).get_reply()?;
-        print!("REPLY format {}\n", reply.format());
-        print!("REPLY len {}\n", reply.value_len());
         Ok(0)
     }
 
@@ -194,25 +239,14 @@ impl YazgooWM {
         let wm_class = self.get_str_property(window, "WM_CLASS").unwrap();
         let window_type = self.get_atom_property(window, "_NET_WM_WINDOW_TYPE").unwrap();
         let wm_class : Vec<&str> = wm_class.split('\0').collect();
-        println!("window_type: '{:?}', wm_class: '{:?}'", window_type, wm_class);
-        println!("setup new window");
         match self.workspaces.get_mut(&self.current_workspace) {
             Some(workspace) => {
-                println!("push window");
                 if !workspace.windows.contains(&window) {
                     workspace.windows.push(window);
+                    resize_workspace_windows(&self.conn, &workspace, &self.conf.border);
                 }
             },
             None => {
-                println!("current workspace not found");
-            },
-        }
-        match self.workspaces.get(&self.current_workspace) {
-            Some(workspace) => {
-                self.resize_workspace_windows(&workspace);
-            }
-            None => {
-                println!("current workspace not found");
             },
         }
     }
@@ -221,16 +255,16 @@ impl YazgooWM {
         for (_, workspace) in &mut self.workspaces {
             if workspace.windows.contains(&window) {
                 workspace.windows.retain(|&x| x != window);
+                resize_workspace_windows(&self.conn, &workspace, &self.conf.border);
+                workspace.focus = 0;
             }
         }
     }
 
     fn run(&mut self) {
         loop {
-            println!("in loop");
             match self.conn.wait_for_event() {
                 Some(event) => {
-                    println!("event");
                     let r = event.response_type();
                     if r == xcb::MAP_NOTIFY as u8 {
                         let map_notify : &xcb::MapNotifyEvent = unsafe {
@@ -249,19 +283,17 @@ impl YazgooWM {
                             xcb::cast_event(&event)
                         };
                         let keycode = key_press.detail();
-                        println!("{:?}", key_press.detail());
                         match &keycode_to_key(keycode) {
                             Some(key) => {
-                                println!("{:?}", key);
                                 if self.conf.workspaces_names.contains(key) {
                                     self.change_workspace(*key, (key_press.state() as u32 ) & xcb::MOD_MASK_SHIFT != 0)
                                 }
                                 else if self.conf.wm_actions.contains_key(&key) {
+                                    self.run_wm_action(&key);
                                 }
                                 else if self.conf.custom_actions.contains_key(&key) {
                                     match self.conf.custom_actions.get(&key) {
                                         Some(action) => {
-                                            println!("run action {}", &key);
                                             action()
                                         },
                                         None => {},
@@ -269,7 +301,6 @@ impl YazgooWM {
                                 }
                             },
                             None => {
-                                println!("error decoding key");
                             },
 
                         }
@@ -296,14 +327,19 @@ fn main() -> Result<(), ()> {
         meta: String::from("mod1"),
         border: Border {
             width: 2,
-            focus_color: String::from("#906cff"),
-            normal_color: String::from("black"),
+            focus_color: 0x906cff,
+            normal_color: 0x000000,
         },
         workspaces_names: vec![ 'a', 'u', 'i', 'o', 'p' ],
         custom_actions: custom_actions,
         wm_actions: wm_actions,
-        float_classes: vec![],
-        auto_float_types: vec![],
+        float_classes: vec!["screenkey", "audacious", "Download", "dropbox", "file_progress", "file-roller", "gimp",
+                          "Komodo_confirm_repl", "Komodo_find2", "pidgin", "skype", "Transmission", "Update", "Xephyr", "obs"].into_iter().map( |x|
+            x.to_string()
+        ).collect(),
+        auto_float_types: vec!["notification", "toolbar", "splash", "dialog", "popup_menu", "utility", "tooltip"].into_iter().map( |x|
+            x.to_string()
+        ).collect(),
     };
 
     let (conn, _) = xcb::Connection::connect(None).unwrap();
