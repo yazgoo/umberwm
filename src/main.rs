@@ -1,5 +1,5 @@
 use std::process::Command;
-use yazgoowm::{Actions, Conf, yazgoowm, WindowBorder, DisplayBorder, Key, CustomAction, Meta};
+use umberwm::{Actions, Conf, umberwm, WindowBorder, DisplayBorder, Key, CustomAction, Meta};
 use std::env;
 use std::collections::HashMap;
 
@@ -45,7 +45,7 @@ fn main() -> Result<(), ()> {
         auto_float_types: auto_float_types.clone(),
     };
 
-    yazgoowm(conf).run();
+    umberwm(conf).run();
 
     Ok(())
 }

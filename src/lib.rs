@@ -87,7 +87,7 @@ struct MouseMoveStart {
     detail: u8,
 }
 
-pub struct YazgooWM {
+pub struct UmberWM {
     conf: Conf,
     current_workspace: WorkspaceName,
     float_windows: Vec<Window>,
@@ -266,7 +266,7 @@ fn change_workspace(conn: &xcb::Connection, workspaces: &mut HashMap<WorkspaceNa
     }
 
 
-impl YazgooWM {
+impl UmberWM {
 
     fn init(&mut self) {
         let screen = self.conn.get_setup().roots().nth(0).unwrap();
@@ -484,7 +484,7 @@ impl YazgooWM {
     }
 }
 
-pub fn yazgoowm(conf: Conf) -> YazgooWM {
+pub fn umberwm(conf: Conf) -> UmberWM {
     let (conn, _) = xcb::Connection::connect(None).unwrap();
     let workspaces = conf.workspaces_names.clone().into_iter().map( |x|
             (x, Workspace {
@@ -494,7 +494,7 @@ pub fn yazgoowm(conf: Conf) -> YazgooWM {
         })).into_iter().collect();
     let xmodmap_pke = xmodmap_pke().unwrap();
     let current_workspace = conf.workspaces_names[0].to_string();
-    let mut wm = YazgooWM {
+    let mut wm = UmberWM {
         conf: conf,
         current_workspace: current_workspace,
         float_windows: vec![],

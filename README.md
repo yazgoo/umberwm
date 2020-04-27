@@ -1,4 +1,4 @@
-yazgoowm is a minimalistic X window manager based on tinywm, inspired by qtile, and tailored for me (hence the name).
+a minimalistic X window manager based on tinywm, inspired by qtile.
 
 # Demo
 
@@ -24,9 +24,5 @@ You should generate your binary based on the crate (see src/main.rs) for an exam
 put in your .xinitrc
 
 ```shell
-exec /path/to/yazgoowm.py mod4
-```
-or
-```shell
-exec /path/to/yazgoowm mod4
+exec /path/to/umberwm mod4
 ```

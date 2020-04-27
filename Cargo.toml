@@ -1,13 +1,13 @@
 [package]
-name = "yazgoowm"
+name = "umberwm"
 version = "0.0.1"
 authors = ["yazgoo <yazgoo@gmail.com>"]
 edition = "2018"
 license = "MIT"
 description = "minimalist X11 window manager"
 readme = "README.md"
-homepage = "https://github.com/yazgoo/yazgoowm"
-repository = "https://github.com/yazgoo/yazgoowm"
+homepage = "https://github.com/yazgoo/umberwm"
+repository = "https://github.com/yazgoo/umberwm"
 keywords = ["wm", "x11", "terminal"]
 categories = ["command-line-utilities"]
 
