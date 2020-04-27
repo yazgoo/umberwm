@@ -321,7 +321,7 @@ impl YazgooWM {
         }
     }
 
-    fn get_atom_property(&mut self, id: u32, name: &str) -> Result<u32, Box<Error>> {
+    fn get_atom_property(&mut self, id: u32, name: &str) -> Result<u32, Box<dyn Error>> {
         let window: xproto::Window = id;
         let ident = xcb::intern_atom(&self.conn, true, "_NET_WM_WINDOW_TYPE").get_reply()?.atom();
         let reply = xproto::get_property(&self.conn, false, window, ident, xproto::ATOM_ATOM, 0, 1024).get_reply()?;
@@ -333,12 +333,12 @@ impl YazgooWM {
         }
     }
 
-    fn setup_new_window(&mut self, window: u32) {
-        let wm_class = self.get_str_property(window, "WM_CLASS").unwrap();
-        let window_type = self.get_atom_property(window, "_NET_WM_WINDOW_TYPE").unwrap();
+    fn setup_new_window(&mut self, window: u32) -> Result<(), Box<dyn Error>> {
+        let wm_class = self.get_str_property(window, "WM_CLASS").ok_or("failed getting wm class")?;
+        let window_type = self.get_atom_property(window, "_NET_WM_WINDOW_TYPE")?;
         let auto_float_types =  window_types_from_list(&self.conn, &self.conf.auto_float_types);
         if auto_float_types.contains(&window_type) {
-            return
+            return Ok(())
         }
         let wm_class : Vec<&str> = wm_class.split('\0').collect();
         match self.workspaces.get_mut(&self.current_workspace) {
@@ -354,6 +354,7 @@ impl YazgooWM {
             None => {
             },
         }
+        Ok(())
     }
 
     fn resize_window(&mut self, event: &xcb::MotionNotifyEvent) -> Result<(), Box<dyn Error>> {
