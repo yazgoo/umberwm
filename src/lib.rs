@@ -1,9 +1,25 @@
 extern crate xcb;
+extern crate regex;
 
 use std::collections::HashMap;
 use xcb::xproto;
 use std::error::Error;
 use std::cmp::max;
+use regex::Regex;
+use std::process::Command;
+
+type XmodmapPke = HashMap<u8, Vec<String>>;
+
+fn xmodmap_pke() -> Result<XmodmapPke, Box<dyn Error>> {
+    let output = Command::new("xmodmap").arg("-pke").output()?;
+    let pattern = Regex::new(r"(\d+) = (.*)")?;
+    let lines = String::from_utf8(output.stdout)?
+        .lines()
+        .filter_map(|line| pattern.captures(line))
+        .map(|cap| (cap[1].parse().unwrap(), cap[2].split(" ").map(|s| s.to_string()).collect()))
+        .collect::<HashMap<u8, Vec<String>>>();
+    Ok(lines)
+}
 
 pub enum Actions {
     SwitchWindow, CloseWindow, ChangeLayout,
@@ -21,7 +37,7 @@ enum Layout {
 
 type Window = u32;
 
-pub type Key = char;
+pub type Key = String;
 
 type WorkspaceName = Key;
 
@@ -79,44 +95,30 @@ pub struct YazgooWM {
     conn: xcb::Connection,
     mouse_move_start: Option<MouseMoveStart>,
     button_press_geometry: Option<Geometry>,
+    xmodmap_pke: XmodmapPke,
 }
 
-fn keycode_to_key(keycode: u8) -> Option<Key> {
-    let mut translator = HashMap::new();
-    translator.insert(38, 'a');
-    translator.insert(39, 'u');
-    translator.insert(40, 'i');
-    translator.insert(27, 'o');
-    translator.insert(26, 'p');
-    translator.insert(65, ' ');
-    translator.insert(61, 'f');
-    translator.insert(46, 'r');
-    translator.insert(35, 'w');
-    translator.insert(44, 't');
-    translator.insert(58, 'q');
-    match translator.get(&keycode) {
-        Some(x) => Some(*x),
+fn keycode_to_key(xmodmap_pke: &XmodmapPke, keycode: u8) -> Option<Key> {
+    match xmodmap_pke.get(&keycode) {
+        Some(x) => {
+            if x.len() > 0 {
+                Some(x[0].to_string())
+            }
+            else {
+                None
+            }
+        },
         None => None
     }
 }
 
-fn key_to_keycode(key: &Key) -> Option<u8> {
-    let mut translator = HashMap::new();
-    translator.insert('a', 38);
-    translator.insert('u', 39);
-    translator.insert('i', 40);
-    translator.insert('o', 27);
-    translator.insert('p', 26);
-    translator.insert(' ', 65);
-    translator.insert('f', 61);
-    translator.insert('r', 46);
-    translator.insert('w', 35);
-    translator.insert('t', 44);
-    translator.insert('q', 58);
-    match translator.get(key) {
-        Some(x) => Some(*x),
-        None => None
+fn key_to_keycode(xmodmap_pke: &XmodmapPke, key: &Key) -> Option<u8> {
+    for (keycode, symbols) in xmodmap_pke.into_iter() {
+        if symbols.contains(&key) {
+            return Some(*keycode);
+        }
     }
+    None
 }
 
 
@@ -274,13 +276,13 @@ impl YazgooWM {
         };
         for mod_mask in vec![mod_key, mod_key | xcb::MOD_MASK_SHIFT] {
             for workspace_name in &self.conf.workspaces_names {
-                xcb::grab_key(&self.conn, false, screen.root(), mod_mask as u16, key_to_keycode(workspace_name).unwrap(), xcb::GRAB_MODE_ASYNC as u8, xcb::GRAB_MODE_ASYNC as u8);
+                xcb::grab_key(&self.conn, false, screen.root(), mod_mask as u16, key_to_keycode(&self.xmodmap_pke, workspace_name).unwrap(), xcb::GRAB_MODE_ASYNC as u8, xcb::GRAB_MODE_ASYNC as u8);
             }
             for custom_action_key in self.conf.custom_actions.keys() {
-                xcb::grab_key(&self.conn, false, screen.root(), mod_mask as u16, key_to_keycode(custom_action_key).unwrap(), xcb::GRAB_MODE_ASYNC as u8, xcb::GRAB_MODE_ASYNC as u8);
+                xcb::grab_key(&self.conn, false, screen.root(), mod_mask as u16, key_to_keycode(&self.xmodmap_pke, custom_action_key).unwrap(), xcb::GRAB_MODE_ASYNC as u8, xcb::GRAB_MODE_ASYNC as u8);
             }
             for custom_action_key in self.conf.wm_actions.keys() {
-                xcb::grab_key(&self.conn, false, screen.root(), mod_mask as u16, key_to_keycode(custom_action_key).unwrap(), xcb::GRAB_MODE_ASYNC as u8, xcb::GRAB_MODE_ASYNC as u8);
+                xcb::grab_key(&self.conn, false, screen.root(), mod_mask as u16, key_to_keycode(&self.xmodmap_pke, custom_action_key).unwrap(), xcb::GRAB_MODE_ASYNC as u8, xcb::GRAB_MODE_ASYNC as u8);
             }
         }
         for button in vec![1, 3] {
@@ -291,7 +293,7 @@ impl YazgooWM {
     }
 
     fn run_wm_action(&mut self, key: &Key) -> Result<(), Box<dyn Error>> {
-        let action = self.conf.wm_actions.get(&key).ok_or("action not found")?;
+        let action = self.conf.wm_actions.get(&key.to_string()).ok_or("action not found")?;
         let workspace = self.workspaces.get_mut(&self.current_workspace).ok_or("workspace not found")?;
         match action {
             Actions::CloseWindow => {
@@ -443,10 +445,10 @@ impl YazgooWM {
                             xcb::cast_event(&event)
                         };
                         let keycode = key_press.detail();
-                        match &keycode_to_key(keycode) {
+                        match &keycode_to_key(&self.xmodmap_pke, keycode) {
                             Some(key) => {
                                 if self.conf.workspaces_names.contains(key) {
-                                    match change_workspace(&self.conn, &mut self.workspaces, self.current_workspace, *key, (key_press.state() as u32 ) & xcb::MOD_MASK_SHIFT != 0) {
+                                    match change_workspace(&self.conn, &mut self.workspaces, self.current_workspace.to_string(), key.to_string(), (key_press.state() as u32 ) & xcb::MOD_MASK_SHIFT != 0) {
                                         Ok(workspace) => { 
                                             self.current_workspace = workspace;
                                             match self.workspaces.get(&self.current_workspace) {
@@ -457,11 +459,11 @@ impl YazgooWM {
                                         Err(_) => {},
                                     };
                                 }
-                                else if self.conf.wm_actions.contains_key(&key) {
+                                else if self.conf.wm_actions.contains_key(&key.to_string()) {
                                     self.run_wm_action(&key);
                                 }
-                                else if self.conf.custom_actions.contains_key(&key) {
-                                    match self.conf.custom_actions.get(&key) {
+                                else if self.conf.custom_actions.contains_key(&key.to_string()) {
+                                    match self.conf.custom_actions.get(&key.to_string()) {
                                         Some(action) => {
                                             action()
                                         },
@@ -490,14 +492,17 @@ pub fn yazgoowm(conf: Conf) -> YazgooWM {
                 windows: vec![],
                 focus: 0,
         })).into_iter().collect();
+    let xmodmap_pke = xmodmap_pke().unwrap();
+    let current_workspace = conf.workspaces_names[0].to_string();
     let mut wm = YazgooWM {
         conf: conf,
-        current_workspace: 'a',
+        current_workspace: current_workspace,
         float_windows: vec![],
         workspaces: workspaces,
         conn: conn,
         button_press_geometry: None,
         mouse_move_start: None,
+        xmodmap_pke: xmodmap_pke,
     };
     wm.init();
     wm

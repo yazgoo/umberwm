@@ -13,3 +13,4 @@ categories = ["command-line-utilities"]
 
 [dependencies]
 xcb = "0.9"
+regex = "1.3"
