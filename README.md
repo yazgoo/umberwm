@@ -15,6 +15,8 @@ yazgoowm is a minimalistic X window manager based on tinywm, inspired by qtile, 
 
 # using it
 
+You should generate your binary based on the crate (see src/main.rs) for an example.
+
 put in your .xinitrc
 
 ```shell
