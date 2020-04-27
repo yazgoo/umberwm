@@ -225,6 +225,7 @@ fn change_workspace(conn: &xcb::Connection, workspaces: &mut HashMap<WorkspaceNa
                         (xcb::CONFIG_WINDOW_WIDTH as u16, geos[0].2 - 2 * border.width - 2 * border.gap),
                         (xcb::CONFIG_WINDOW_HEIGHT as u16, geos[0].3 - 2 * border.width - 2 * border.gap),
                         (xcb::CONFIG_WINDOW_BORDER_WIDTH as u16, border.width),
+                        (xcb::CONFIG_WINDOW_STACK_MODE as u16, xcb::STACK_MODE_ABOVE),
                     ]
                     );
                     },
