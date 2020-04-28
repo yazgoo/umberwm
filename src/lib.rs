@@ -235,7 +235,7 @@ fn change_workspace(conn: &xcb::Connection, workspaces: &mut HashMap<WorkspaceNa
                 }
             }
         }
-        for (i, geo) in workspace.windows.iter().enumerate() {
+        for (i, _) in workspace.windows.iter().enumerate() {
             match workspace.windows.get(i) {
                 Some(window) => {
                     xcb::change_window_attributes(&conn, *window, &[
@@ -331,7 +331,7 @@ impl UmberWM {
 
     fn get_atom_property(&mut self, id: u32, name: &str) -> Result<u32, Box<dyn Error>> {
         let window: xproto::Window = id;
-        let ident = xcb::intern_atom(&self.conn, true, "_NET_WM_WINDOW_TYPE").get_reply()?.atom();
+        let ident = xcb::intern_atom(&self.conn, true, name).get_reply()?.atom();
         let reply = xproto::get_property(&self.conn, false, window, ident, xproto::ATOM_ATOM, 0, 1024).get_reply()?;
         if reply.value_len() <= 0 {
             Ok(42)
@@ -366,7 +366,6 @@ impl UmberWM {
     }
 
     fn resize_window(&mut self, event: &xcb::MotionNotifyEvent) -> Result<(), Box<dyn Error>> {
-        /* TODO */
         let mouse_move_start = self.mouse_move_start.clone().ok_or("no mouse move start")?;
         let attr = self.button_press_geometry.clone().ok_or("no button press geometry")?;
         let xdiff = event.root_x() - mouse_move_start.root_x;
@@ -406,7 +405,7 @@ impl UmberWM {
                         let map_notify : &xcb::MapNotifyEvent = unsafe {
                             xcb::cast_event(&event)
                         };
-                        self.setup_new_window(map_notify.window());
+                        let _ = self.setup_new_window(map_notify.window());
                     }
                     if r == xcb::DESTROY_NOTIFY as u8 {
                         let map_notify : &xcb::DestroyNotifyEvent = unsafe {
@@ -435,7 +434,7 @@ impl UmberWM {
                         let event : &xcb::MotionNotifyEvent = unsafe {
                             xcb::cast_event(&event)
                         };
-                        self.resize_window(event);
+                        let _ = self.resize_window(event);
                     }
                     else if r == xcb::BUTTON_RELEASE as u8 {
                         self.mouse_move_start = None;
@@ -460,7 +459,7 @@ impl UmberWM {
                                     };
                                 }
                                 else if self.conf.wm_actions.contains_key(&key.to_string()) {
-                                    self.run_wm_action(&key);
+                                    let _ = self.run_wm_action(&key);
                                 }
                                 else if self.conf.custom_actions.contains_key(&key.to_string()) {
                                     match self.conf.custom_actions.get(&key.to_string()) {
