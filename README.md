@@ -10,8 +10,7 @@ you should have xmodmap installed
   - configuration as code (like qtile, dwm)
   - tiled by default (Binary space partitioning)
   - supports workspaces
-  - two implementations: python and rust
-  - single file (python: ~200 LoC, rust: ~500 LoC)
+  - single file (~500 LoC)
 
 # using it
 
