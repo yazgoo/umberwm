@@ -22,6 +22,8 @@ umberwm is used/configured in rust, here is how to use it:
 3. edit src/main.rs (see comments for more details)
 4. run `cargo build`, binary is available in target/debug/myumerwm
 
+add the following to your .xinitrc :
+
 ```shell
 exec /path/to/myumberwm mod4
 ```
