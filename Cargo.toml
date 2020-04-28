@@ -9,7 +9,7 @@ readme = "README.md"
 homepage = "https://github.com/yazgoo/umberwm"
 repository = "https://github.com/yazgoo/umberwm"
 keywords = ["wm", "x11", "terminal"]
-categories = ["command-line-utilities"]
+categories = ["GUI"]
 
 [dependencies]
 xcb = "0.9"
