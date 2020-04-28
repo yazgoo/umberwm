@@ -1,9 +1,5 @@
 a minimalistic X window manager based on tinywm, inspired by qtile.
 
-# Demo
-
-[![Demo](https://img.youtube.com/vi/syz2i6MyOAg/0.jpg)](https://www.youtube.com/watch?v=syz2i6MyOAg)
-
 # prerequisites
 
 you should have xmodmap installed
@@ -19,10 +15,13 @@ you should have xmodmap installed
 
 # using it
 
-You should generate your binary based on the crate (see src/main.rs) for an example.
+umberwm is used/configured in rust, here is how to use it:
 
-put in your .xinitrc
+1. install rust and cargo https://doc.rust-lang.org/cargo/getting-started/installation.html
+2. clone template project `git clone https://github.com/yazgoo/myumberwm`
+3. edit src/main.rs (see comments for more details)
+4. run `cargo build`, binary is available in target/debug/myumerwm
 
 ```shell
-exec /path/to/umberwm mod4
+exec /path/to/myumberwm mod4
 ```
