@@ -29,6 +29,7 @@ pub enum Meta {
     Mod1, Mod4
 }
 
+#[derive(Clone, Debug)]
 enum Layout {
     BSPV,
     Monocle,
@@ -55,6 +56,7 @@ pub struct WindowBorder {
     pub normal_color: Color,
 }
 
+#[derive(Clone, Debug)]
 struct Workspace {
     layout: Layout,
     windows: Vec<Window>,
@@ -184,77 +186,6 @@ fn change_workspace(conn: &xcb::Connection, workspaces: &mut HashMap<WorkspaceNa
         }
     }
 
-    fn resize_workspace_windows(conn: &xcb::Connection,workspace: &Workspace, border: &WindowBorder, display_border: &DisplayBorder, float_windows: &Vec<u32>) {
-        let mut non_float_windows = workspace.windows.clone();
-        non_float_windows.retain(|w| float_windows.contains(&w));
-        let count = non_float_windows.len();
-        if count == 0 {
-            return
-        }
-        let screen = conn.get_setup().roots().nth(0).unwrap();
-        let width = screen.width_in_pixels() as u32 - display_border.right - display_border.left;
-        let height = screen.height_in_pixels() as u32 - display_border.top - display_border.bottom;
-        let geos = match workspace.layout {
-            Layout::BSPV => {
-                geometries_bsp(0, count, display_border.left, display_border.top, width, height, 1)},
-            Layout::BSPH => {
-                geometries_bsp(0, count, display_border.left, display_border.top, width, height, 0)},
-            Layout::Monocle => {
-                geometries_bsp(0, 1, display_border.left, display_border.top, width, height, 1)},
-        };
-        match workspace.layout {
-            Layout::BSPV | Layout::BSPH => {
-                for (i, geo) in geos.iter().enumerate() {
-                    match non_float_windows.get(i) {
-                        Some(window) => {xcb::configure_window(&conn, *window, &[
-                            (xcb::CONFIG_WINDOW_X as u16, geo.0 + border.gap),
-                            (xcb::CONFIG_WINDOW_Y as u16, geo.1 + border.gap),
-                            (xcb::CONFIG_WINDOW_WIDTH as u16, geo.2 - 2 * border.width - 2 * border.gap),
-                            (xcb::CONFIG_WINDOW_HEIGHT as u16, geo.3 - 2 * border.width - 2 * border.gap),
-                            (xcb::CONFIG_WINDOW_BORDER_WIDTH as u16, border.width),
-                        ]
-                        );
-                        },
-                        None => {}
-                    }
-                }
-            }
-            Layout::Monocle => {
-                match workspace.windows.get(workspace.focus) {
-                    Some(window) => {xcb::configure_window(&conn, *window, &[
-                        (xcb::CONFIG_WINDOW_X as u16, geos[0].0 + border.gap),
-                        (xcb::CONFIG_WINDOW_Y as u16, geos[0].1 + border.gap),
-                        (xcb::CONFIG_WINDOW_WIDTH as u16, geos[0].2 - 2 * border.width - 2 * border.gap),
-                        (xcb::CONFIG_WINDOW_HEIGHT as u16, geos[0].3 - 2 * border.width - 2 * border.gap),
-                        (xcb::CONFIG_WINDOW_BORDER_WIDTH as u16, border.width),
-                        (xcb::CONFIG_WINDOW_STACK_MODE as u16, xcb::STACK_MODE_ABOVE),
-                    ]
-                    );
-                    },
-                    None => {}
-                }
-            }
-        }
-        for (i, _) in workspace.windows.iter().enumerate() {
-            match workspace.windows.get(i) {
-                Some(window) => {
-                    xcb::change_window_attributes(&conn, *window, &[
-                        (xcb::CW_BORDER_PIXEL, 
-                         if i == workspace.focus {
-                             border.focus_color
-                         } else {
-                             border.normal_color
-                         }
-                        ),
-                    ]);
-                    if i == workspace.focus {
-                        xcb::set_input_focus(&conn, xcb::INPUT_FOCUS_PARENT as u8, *window, 0);
-                    }
-                },
-                None =>{}
-            }
-        }
-    }
 
     fn window_types_from_list(conn: &xcb::Connection, types_names: &Vec<String>) -> Vec<xcb::Atom> {
         types_names.into_iter().map(|x| {
@@ -267,6 +198,67 @@ fn change_workspace(conn: &xcb::Connection, workspaces: &mut HashMap<WorkspaceNa
 
 
 impl UmberWM {
+
+    fn resize_workspace_windows(&mut self, workspace: &Workspace) {
+        let mut non_float_windows = workspace.windows.clone();
+        non_float_windows.retain(|w| self.float_windows.contains(&w));
+        let count = non_float_windows.len();
+        if count == 0 {
+            return
+        }
+        let screen = self.conn.get_setup().roots().nth(0).unwrap();
+        let width = screen.width_in_pixels() as u32 - self.conf.display_border.right - self.conf.display_border.left;
+        let height = screen.height_in_pixels() as u32 - self.conf.display_border.top - self.conf.display_border.bottom;
+        let geos = match workspace.layout {
+            Layout::BSPV => {
+                geometries_bsp(0, count, self.conf.display_border.left, self.conf.display_border.top, width, height, 1)},
+            Layout::BSPH => {
+                geometries_bsp(0, count, self.conf.display_border.left, self.conf.display_border.top, width, height, 0)},
+            Layout::Monocle => {
+                geometries_bsp(0, 1, self.conf.display_border.left, self.conf.display_border.top, width, height, 1)},
+        };
+        match workspace.layout {
+            Layout::BSPV | Layout::BSPH => {
+                for (i, geo) in geos.iter().enumerate() {
+                    match non_float_windows.get(i) {
+                        Some(window) => {xcb::configure_window(&self.conn, *window, &[
+                            (xcb::CONFIG_WINDOW_X as u16, geo.0 + self.conf.border.gap),
+                            (xcb::CONFIG_WINDOW_Y as u16, geo.1 + self.conf.border.gap),
+                            (xcb::CONFIG_WINDOW_WIDTH as u16, geo.2 - 2 * self.conf.border.width - 2 * self.conf.border.gap),
+                            (xcb::CONFIG_WINDOW_HEIGHT as u16, geo.3 - 2 * self.conf.border.width - 2 * self.conf.border.gap),
+                            (xcb::CONFIG_WINDOW_BORDER_WIDTH as u16, self.conf.border.width),
+                        ]
+                        );
+                        },
+                        None => {}
+                    }
+                }
+            }
+            Layout::Monocle => {
+                match workspace.windows.get(workspace.focus) {
+                    Some(window) => {xcb::configure_window(&self.conn, *window, &[
+                        (xcb::CONFIG_WINDOW_X as u16, geos[0].0 + self.conf.border.gap),
+                        (xcb::CONFIG_WINDOW_Y as u16, geos[0].1 + self.conf.border.gap),
+                        (xcb::CONFIG_WINDOW_WIDTH as u16, geos[0].2 - 2 * self.conf.border.width - 2 * self.conf.border.gap),
+                        (xcb::CONFIG_WINDOW_HEIGHT as u16, geos[0].3 - 2 * self.conf.border.width - 2 * self.conf.border.gap),
+                        (xcb::CONFIG_WINDOW_BORDER_WIDTH as u16, self.conf.border.width),
+                        (xcb::CONFIG_WINDOW_STACK_MODE as u16, xcb::STACK_MODE_ABOVE),
+                    ]
+                    );
+                    },
+                    None => {}
+                }
+            }
+        }
+        for (i, _) in workspace.windows.iter().enumerate() {
+            match workspace.windows.get(i) {
+                Some(window) => {
+                    let _ = self.focus_unfocus(window, i == workspace.focus);
+                },
+                None =>{}
+            }
+        }
+    }
 
     fn init(&mut self) {
         let screen = self.conn.get_setup().roots().nth(0).unwrap();
@@ -292,6 +284,25 @@ impl UmberWM {
         self.conn.flush();
     }
 
+    fn focus_unfocus(&mut self, window: &xcb::Window, do_focus: bool) -> Result<(), Box<dyn Error>> {
+        xcb::change_window_attributes(&self.conn, *window, &[
+            (xcb::CW_BORDER_PIXEL, 
+             if do_focus {
+                 self.conf.border.focus_color
+             } else {
+                 self.conf.border.normal_color
+             }
+            ),
+        ]);
+        if do_focus {
+            xcb::set_input_focus(&self.conn, xcb::INPUT_FOCUS_PARENT as u8, *window, 0);
+            let workspace = self.workspaces.get_mut(&self.current_workspace).ok_or("workspace not found")?;
+            workspace.windows.iter().position(|x| x == window).map(|i| workspace.focus = i );
+        }
+        Ok(())
+    }
+
+
     fn run_wm_action(&mut self, key: &Key) -> Result<(), Box<dyn Error>> {
         let action = self.conf.wm_actions.get(&key.to_string()).ok_or("action not found")?;
         let workspace = self.workspaces.get_mut(&self.current_workspace).ok_or("workspace not found")?;
@@ -313,7 +324,8 @@ impl UmberWM {
                 }
             },
         };
-        resize_workspace_windows(&self.conn, &workspace, &self.conf.border, &self.conf.display_border, &self.float_windows);
+        let workspace = self.workspaces.get(&self.current_workspace).ok_or("workspace not found")?.clone();
+        self.resize_workspace_windows(&workspace);
         Ok(())
     }
 
@@ -356,12 +368,14 @@ impl UmberWM {
                         self.float_windows.push(window);
                     }
                     workspace.windows.push(window);
-                    resize_workspace_windows(&self.conn, &workspace, &self.conf.border, &self.conf.display_border, &self.float_windows);
+                    let workspace2 = workspace.clone();
+                    self.resize_workspace_windows(&workspace2);
                 }
             },
             None => {
             },
         }
+        xcb::change_window_attributes(&self.conn, window, &[(xcb::CW_EVENT_MASK, xcb::EVENT_MASK_ENTER_WINDOW | xcb::EVENT_MASK_LEAVE_WINDOW)]);
         Ok(())
     }
 
@@ -387,13 +401,19 @@ impl UmberWM {
         if self.float_windows.contains(&window) {
             self.float_windows.retain(|&x| x != window);
         }
+        let mut workspace2 : Option<Workspace> = None;
+        for (_, workspace) in &self.workspaces {
+            if workspace.windows.contains(&window) {
+                workspace2 = Some(workspace.clone());
+            }
+        }
         for (_, workspace) in &mut self.workspaces {
             if workspace.windows.contains(&window) {
                 workspace.windows.retain(|&x| x != window);
-                resize_workspace_windows(&self.conn, &workspace, &self.conf.border, &self.conf.display_border, &self.float_windows);
                 workspace.focus = 0;
             }
         }
+        workspace2.map(|workspace|self.resize_workspace_windows(&workspace));
     }
 
     pub fn run(&mut self) {
@@ -436,6 +456,18 @@ impl UmberWM {
                         };
                         let _ = self.resize_window(event);
                     }
+                    else if r == xcb::LEAVE_NOTIFY as u8 {
+                        let event : &xcb::LeaveNotifyEvent = unsafe {
+                            xcb::cast_event(&event)
+                        };
+                        let _= self.focus_unfocus(&event.event(), false);
+                    }
+                    else if r == xcb::ENTER_NOTIFY as u8 {
+                        let event : &xcb::EnterNotifyEvent = unsafe {
+                            xcb::cast_event(&event)
+                        };
+                        let _ = self.focus_unfocus(&event.event(), true);
+                    }
                     else if r == xcb::BUTTON_RELEASE as u8 {
                         self.mouse_move_start = None;
                     }
@@ -450,10 +482,8 @@ impl UmberWM {
                                     match change_workspace(&self.conn, &mut self.workspaces, self.current_workspace.to_string(), key.to_string(), (key_press.state() as u32 ) & xcb::MOD_MASK_SHIFT != 0) {
                                         Ok(workspace) => { 
                                             self.current_workspace = workspace;
-                                            match self.workspaces.get(&self.current_workspace) {
-                                                Some(workspace) => resize_workspace_windows(&self.conn, &workspace, &self.conf.border, &self.conf.display_border, &self.float_windows),
-                                                None => {},
-                                            }
+                                            let workspace = self.workspaces.get(&self.current_workspace).ok_or("workspace not found").unwrap().clone();
+                                            self.resize_workspace_windows(&workspace);
                                         },
                                         Err(_) => {},
                                     };
