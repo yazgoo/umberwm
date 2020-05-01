@@ -70,6 +70,12 @@ pub struct DisplayBorder {
     pub top: u32,
 }
 
+pub type OnChangeWorkspace = Option<Box<dyn Fn(WorkspaceName) -> ()>>;
+
+pub struct EventsCallbacks {
+    pub on_change_workspace: OnChangeWorkspace,
+}
+
 pub struct Conf {
     pub meta: Meta,
     pub border: WindowBorder,
@@ -79,6 +85,7 @@ pub struct Conf {
     pub wm_actions: HashMap<Key, Actions>,
     pub float_classes: Vec<String>,
     pub auto_float_types: Vec<String>,
+    pub events_callbacks: EventsCallbacks,
 }
 
 #[derive(Clone)]
@@ -487,6 +494,9 @@ impl UmberWM {
                                         },
                                         Err(_) => {},
                                     };
+                                    self.conf.events_callbacks.on_change_workspace.as_ref().map ( |callback|
+                                        callback(key.to_string())
+                                    );
                                 }
                                 else if self.conf.wm_actions.contains_key(&key.to_string()) {
                                     let _ = self.run_wm_action(&key);
