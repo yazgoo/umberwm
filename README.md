@@ -2,6 +2,8 @@
 
 a minimalistic X window manager based on tinywm, inspired by qtile.
 
+![UmberWM Screenshot](screenshot.jpg)
+
 # prerequisites
 
 you should have xmodmap installed
