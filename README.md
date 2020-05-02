@@ -1,8 +1,8 @@
 # umberwm :ram:
 
-a minimalistic X window manager based on tinywm, inspired by qtile.
+a minimalistic X window manager based on tinywm, inspired by qtile, here is video introduction:
 
-![UmberWM Screenshot](screenshot.jpg)
+[![UmberWM Screenshot](screenshot.jpg)](https://youtu.be/5XdFNEq69N0)
 
 # prerequisites
 
