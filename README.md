@@ -21,7 +21,7 @@ you should have xmodmap installed
 umberwm is used/configured in rust, here is how to use it:
 
 1. install rust and cargo https://doc.rust-lang.org/cargo/getting-started/installation.html
-2. clone template project `git clone https://github.com/yazgoo/myumberwm`
+2. clone template project (__:warning: it is a different repository__): `git clone https://github.com/yazgoo/myumberwm`
 3. edit src/main.rs (see comments for more details)
 4. run `cargo build`, binary is available in target/debug/myumerwm
 
