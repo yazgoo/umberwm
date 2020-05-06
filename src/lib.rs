@@ -208,7 +208,7 @@ impl UmberWM {
 
     fn resize_workspace_windows(&mut self, workspace: &Workspace) {
         let mut non_float_windows = workspace.windows.clone();
-        non_float_windows.retain(|w| self.float_windows.contains(&w));
+        non_float_windows.retain(|w| !self.float_windows.contains(&w));
         let count = non_float_windows.len();
         if count == 0 {
             return
@@ -231,8 +231,8 @@ impl UmberWM {
                         Some(window) => {xcb::configure_window(&self.conn, *window, &[
                             (xcb::CONFIG_WINDOW_X as u16, geo.0 + self.conf.border.gap),
                             (xcb::CONFIG_WINDOW_Y as u16, geo.1 + self.conf.border.gap),
-                            (xcb::CONFIG_WINDOW_WIDTH as u16, geo.2 - 2 * self.conf.border.width - 2 * self.conf.border.gap),
-                            (xcb::CONFIG_WINDOW_HEIGHT as u16, geo.3 - 2 * self.conf.border.width - 2 * self.conf.border.gap),
+                            (xcb::CONFIG_WINDOW_WIDTH as u16, geo.2.saturating_sub(2 * self.conf.border.width + 2 * self.conf.border.gap)),
+                            (xcb::CONFIG_WINDOW_HEIGHT as u16, geo.3.saturating_sub(2 * self.conf.border.width + 2 * self.conf.border.gap)),
                             (xcb::CONFIG_WINDOW_BORDER_WIDTH as u16, self.conf.border.width),
                         ]
                         );
@@ -246,8 +246,8 @@ impl UmberWM {
                     Some(window) => {xcb::configure_window(&self.conn, *window, &[
                         (xcb::CONFIG_WINDOW_X as u16, geos[0].0 + self.conf.border.gap),
                         (xcb::CONFIG_WINDOW_Y as u16, geos[0].1 + self.conf.border.gap),
-                        (xcb::CONFIG_WINDOW_WIDTH as u16, geos[0].2 - 2 * self.conf.border.width - 2 * self.conf.border.gap),
-                        (xcb::CONFIG_WINDOW_HEIGHT as u16, geos[0].3 - 2 * self.conf.border.width - 2 * self.conf.border.gap),
+                        (xcb::CONFIG_WINDOW_WIDTH as u16, geos[0].2.saturating_sub(2 * self.conf.border.width + 2 * self.conf.border.gap)),
+                        (xcb::CONFIG_WINDOW_HEIGHT as u16, geos[0].3.saturating_sub(2 * self.conf.border.width + 2 * self.conf.border.gap)),
                         (xcb::CONFIG_WINDOW_BORDER_WIDTH as u16, self.conf.border.width),
                         (xcb::CONFIG_WINDOW_STACK_MODE as u16, xcb::STACK_MODE_ABOVE),
                     ]
@@ -377,7 +377,7 @@ impl UmberWM {
         match self.workspaces.get_mut(&self.current_workspace) {
             Some(workspace) => {
                 if !workspace.windows.contains(&window) {
-                    if wm_class.len() != 0 && ! self.conf.float_classes.contains(&wm_class[0].to_string()) && !self.float_windows.contains(&window) { 
+                    if wm_class.len() != 0 && self.conf.float_classes.contains(&wm_class[0].to_string()) && !self.float_windows.contains(&window) { 
                         self.float_windows.push(window);
                     }
                     workspace.windows.push(window);
@@ -411,18 +411,12 @@ impl UmberWM {
     }
 
     fn destroy_window(&mut self, window: u32) {
-        if self.float_windows.contains(&window) {
-            self.float_windows.retain(|&x| x != window);
-        }
+        self.float_windows.retain(|&x| x != window);
         let mut workspace2 : Option<Workspace> = None;
-        for (_, workspace) in &self.workspaces {
-            if workspace.windows.contains(&window) {
-                workspace2 = Some(workspace.clone());
-            }
-        }
         for (_, workspace) in &mut self.workspaces {
             if workspace.windows.contains(&window) {
                 workspace.windows.retain(|&x| x != window);
+                workspace2 = Some(workspace.clone());
                 workspace.focus = 0;
             }
         }
