@@ -275,13 +275,19 @@ impl UmberWM {
         };
         for mod_mask in vec![mod_key, mod_key | xcb::MOD_MASK_SHIFT] {
             for workspace_name in &self.conf.workspaces_names {
-                xcb::grab_key(&self.conn, false, screen.root(), mod_mask as u16, key_to_keycode(&self.xmodmap_pke, workspace_name).unwrap(), xcb::GRAB_MODE_ASYNC as u8, xcb::GRAB_MODE_ASYNC as u8);
+                key_to_keycode(&self.xmodmap_pke, workspace_name).map ( |keycode|
+                    xcb::grab_key(&self.conn, false, screen.root(), mod_mask as u16, keycode, xcb::GRAB_MODE_ASYNC as u8, xcb::GRAB_MODE_ASYNC as u8)
+                );
             }
             for custom_action_key in self.conf.custom_actions.keys() {
-                xcb::grab_key(&self.conn, false, screen.root(), mod_mask as u16, key_to_keycode(&self.xmodmap_pke, custom_action_key).unwrap(), xcb::GRAB_MODE_ASYNC as u8, xcb::GRAB_MODE_ASYNC as u8);
+                key_to_keycode(&self.xmodmap_pke, custom_action_key).map ( |keycode|
+                    xcb::grab_key(&self.conn, false, screen.root(), mod_mask as u16, keycode, xcb::GRAB_MODE_ASYNC as u8, xcb::GRAB_MODE_ASYNC as u8)
+                );
             }
             for custom_action_key in self.conf.wm_actions.keys() {
-                xcb::grab_key(&self.conn, false, screen.root(), mod_mask as u16, key_to_keycode(&self.xmodmap_pke, custom_action_key).unwrap(), xcb::GRAB_MODE_ASYNC as u8, xcb::GRAB_MODE_ASYNC as u8);
+                key_to_keycode(&self.xmodmap_pke, custom_action_key).map ( |keycode|
+                    xcb::grab_key(&self.conn, false, screen.root(), mod_mask as u16, keycode, xcb::GRAB_MODE_ASYNC as u8, xcb::GRAB_MODE_ASYNC as u8)
+                );
             }
         }
         for button in vec![1, 3] {
