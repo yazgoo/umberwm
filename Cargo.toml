@@ -12,5 +12,7 @@ keywords = ["wm", "x11", "terminal"]
 categories = ["GUI"]
 
 [dependencies]
-xcb = "0.9"
 regex = "1.3"
+[dependencies.xcb]
+version = "0.9"
+features = ["randr"]
