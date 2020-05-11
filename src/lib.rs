@@ -3,6 +3,7 @@ extern crate regex;
 
 use std::collections::HashMap;
 use xcb::xproto;
+use xcb::randr;
 use std::error::Error;
 use std::cmp::max;
 use regex::Regex;
@@ -47,7 +48,7 @@ pub type CustomAction = Box<dyn Fn() -> ()>;
 type Color = u32;
 
 #[derive(Clone)]
-struct Geometry(u32, u32, u32, u32);
+pub struct Geometry(u32, u32, u32, u32);
 
 pub struct WindowBorder {
     pub width: u32,
@@ -80,7 +81,7 @@ pub struct Conf {
     pub meta: Meta,
     pub border: WindowBorder,
     pub display_border: DisplayBorder,
-    pub workspaces_names: Vec<WorkspaceName>,
+    pub workspaces_names: Vec<Vec<WorkspaceName>>,
     pub custom_actions: HashMap<Key, CustomAction>,
     pub wm_actions: HashMap<Key, Actions>,
     pub float_classes: Vec<String>,
@@ -105,6 +106,7 @@ pub struct UmberWM {
     mouse_move_start: Option<MouseMoveStart>,
     button_press_geometry: Option<Geometry>,
     xmodmap_pke: XmodmapPke,
+    displays_geometries: Vec<Geometry>,
 }
 
 fn keycode_to_key(xmodmap_pke: &XmodmapPke, keycode: u8) -> Option<Key> {
@@ -203,26 +205,61 @@ fn change_workspace(conn: &xcb::Connection, workspaces: &mut HashMap<WorkspaceNa
         ).flatten().collect()
     }
 
-
 impl UmberWM {
 
-    fn resize_workspace_windows(&mut self, workspace: &Workspace) {
+    pub fn get_displays_geometries(&mut self) -> Result<Vec<Geometry>, Box<dyn Error>> {
+        let conn = &self.conn;
+        let setup = self.conn.get_setup();
+        let screen = setup.roots().nth(0).unwrap();
+        let window_dummy = conn.generate_id();
+        xcb::create_window(&conn, 0, window_dummy, screen.root(), 0, 0, 1, 1, 0, 0, 0, &[]);
+        let screen_res_cookie =
+            randr::get_screen_resources(&conn, window_dummy);
+        let screen_res_reply = screen_res_cookie.get_reply().unwrap();
+        let crtcs = screen_res_reply.crtcs();
+
+        let mut crtc_cookies = Vec::with_capacity(crtcs.len());
+        for crtc in crtcs {
+            crtc_cookies.push(randr::get_crtc_info(&conn, *crtc, 0));
+        }
+
+        let mut result = Vec::new();
+        for (i, crtc_cookie) in crtc_cookies.into_iter().enumerate() {
+            if let Ok(reply) = crtc_cookie.get_reply() {
+                if reply.width() > 0 {
+                if i != 0 { println!(""); }
+                    println!("CRTC[{}] INFO:", i);
+                    println!(" x-off\t: {}", reply.x());
+                    println!(" y-off\t: {}", reply.y());
+                    println!(" width\t: {}", reply.width());
+                    println!(" height\t: {}", reply.height());
+                    result.push(Geometry(reply.x() as u32, reply.y() as u32, reply.width() as u32, reply.height() as u32))
+                }
+            }
+        }
+        Ok(result)
+    }
+
+
+    fn resize_workspace_windows(&mut self, workspace: &Workspace, display: usize) {
         let mut non_float_windows = workspace.windows.clone();
         non_float_windows.retain(|w| !self.float_windows.contains(&w));
         let count = non_float_windows.len();
         if count == 0 {
             return
         }
-        let screen = self.conn.get_setup().roots().nth(0).unwrap();
-        let width = screen.width_in_pixels() as u32 - self.conf.display_border.right - self.conf.display_border.left;
-        let height = screen.height_in_pixels() as u32 - self.conf.display_border.top - self.conf.display_border.bottom;
+        let display_geometry = self.displays_geometries.get(display).unwrap();
+        let width = display_geometry.2 as u32 - self.conf.display_border.right - self.conf.display_border.left;
+        let height = display_geometry.3 as u32 - self.conf.display_border.top - self.conf.display_border.bottom;
+        let left = display_geometry.0 + self.conf.display_border.left;
+        let top = display_geometry.1 + self.conf.display_border.top;
         let geos = match workspace.layout {
             Layout::BSPV => {
-                geometries_bsp(0, count, self.conf.display_border.left, self.conf.display_border.top, width, height, 1)},
+                geometries_bsp(0, count, left, top, width, height, 1)},
             Layout::BSPH => {
-                geometries_bsp(0, count, self.conf.display_border.left, self.conf.display_border.top, width, height, 0)},
+                geometries_bsp(0, count, left, top, width, height, 0)},
             Layout::Monocle => {
-                geometries_bsp(0, 1, self.conf.display_border.left, self.conf.display_border.top, width, height, 1)},
+                geometries_bsp(0, 1, left, top, width, height, 1)},
         };
         match workspace.layout {
             Layout::BSPV | Layout::BSPH => {
@@ -268,16 +305,19 @@ impl UmberWM {
     }
 
     fn init(&mut self) {
+        self.displays_geometries = self.get_displays_geometries().unwrap();
         let screen = self.conn.get_setup().roots().nth(0).unwrap();
         let mod_key = match self.conf.meta {
              Meta::Mod4 => xcb::MOD_MASK_4,
              Meta::Mod1 => xcb::MOD_MASK_1
         };
         for mod_mask in vec![mod_key, mod_key | xcb::MOD_MASK_SHIFT] {
-            for workspace_name in &self.conf.workspaces_names {
-                key_to_keycode(&self.xmodmap_pke, workspace_name).map ( |keycode|
-                    xcb::grab_key(&self.conn, false, screen.root(), mod_mask as u16, keycode, xcb::GRAB_MODE_ASYNC as u8, xcb::GRAB_MODE_ASYNC as u8)
-                );
+            for workspace_name_in_display in &self.conf.workspaces_names {
+                for workspace_name in workspace_name_in_display {
+                    key_to_keycode(&self.xmodmap_pke, workspace_name).map ( |keycode|
+                        xcb::grab_key(&self.conn, false, screen.root(), mod_mask as u16, keycode, xcb::GRAB_MODE_ASYNC as u8, xcb::GRAB_MODE_ASYNC as u8)
+                    );
+                }
             }
             for custom_action_key in self.conf.custom_actions.keys() {
                 key_to_keycode(&self.xmodmap_pke, custom_action_key).map ( |keycode|
@@ -317,6 +357,7 @@ impl UmberWM {
 
 
     fn run_wm_action(&mut self, key: &Key) -> Result<(), Box<dyn Error>> {
+        let workspaces_names_by_display = self.conf.workspaces_names.clone();
         let action = self.conf.wm_actions.get(&key.to_string()).ok_or("action not found")?;
         let workspace = self.workspaces.get_mut(&self.current_workspace).ok_or("workspace not found")?;
         match action {
@@ -337,8 +378,12 @@ impl UmberWM {
                 }
             },
         };
-        let workspace = self.workspaces.get(&self.current_workspace).ok_or("workspace not found")?.clone();
-        self.resize_workspace_windows(&workspace);
+        for (display, workspaces_names) in workspaces_names_by_display.iter().enumerate() {
+            if workspaces_names.contains(&self.current_workspace) {
+                let workspace = self.workspaces.get(&self.current_workspace).ok_or("workspace not found")?.clone();
+                self.resize_workspace_windows(&workspace, display);
+            }
+        }
         Ok(())
     }
 
@@ -382,7 +427,12 @@ impl UmberWM {
                     }
                     workspace.windows.push(window);
                     let workspace2 = workspace.clone();
-                    self.resize_workspace_windows(&workspace2);
+                    let workspaces_names_by_display = self.conf.workspaces_names.clone();
+                    for (display, workspaces_names) in workspaces_names_by_display.iter().enumerate() {
+                        if workspaces_names.contains(&self.current_workspace) {
+                            self.resize_workspace_windows(&workspace2, display);
+                        }
+                    }
                 }
             },
             None => {
@@ -420,7 +470,15 @@ impl UmberWM {
                 workspace.focus = 0;
             }
         }
-        workspace2.map(|workspace|self.resize_workspace_windows(&workspace));
+        let workspaces_names_by_display = self.conf.workspaces_names.clone();
+        let mut dis = 0;
+        for (display, workspaces_names) in workspaces_names_by_display.iter().enumerate() {
+            if workspaces_names.contains(&self.current_workspace) {
+                dis = display;
+            }
+        }
+
+        workspace2.map(|workspace|self.resize_workspace_windows(&workspace, dis));
     }
 
     pub fn run(&mut self) {
@@ -485,20 +543,23 @@ impl UmberWM {
                         let keycode = key_press.detail();
                         match &keycode_to_key(&self.xmodmap_pke, keycode) {
                             Some(key) => {
-                                if self.conf.workspaces_names.contains(key) {
-                                    match change_workspace(&self.conn, &mut self.workspaces, self.current_workspace.to_string(), key.to_string(), (key_press.state() as u32 ) & xcb::MOD_MASK_SHIFT != 0) {
-                                        Ok(workspace) => { 
-                                            self.current_workspace = workspace;
-                                            let workspace = self.workspaces.get(&self.current_workspace).ok_or("workspace not found").unwrap().clone();
-                                            self.resize_workspace_windows(&workspace);
-                                        },
-                                        Err(_) => {},
-                                    };
-                                    self.conf.events_callbacks.on_change_workspace.as_ref().map ( |callback|
-                                        callback(key.to_string())
-                                    );
+                                let workspaces_names_by_display = self.conf.workspaces_names.clone();
+                                for (display, workspaces_names) in workspaces_names_by_display.iter().enumerate() {
+                                    if workspaces_names.contains(key) {
+                                        match change_workspace(&self.conn, &mut self.workspaces, self.current_workspace.to_string(), key.to_string(), (key_press.state() as u32 ) & xcb::MOD_MASK_SHIFT != 0) {
+                                            Ok(workspace) => { 
+                                                self.current_workspace = workspace;
+                                                let workspace = self.workspaces.get(&self.current_workspace).ok_or("workspace not found").unwrap().clone();
+                                                self.resize_workspace_windows(&workspace, display);
+                                            },
+                                            Err(_) => {},
+                                        };
+                                        self.conf.events_callbacks.on_change_workspace.as_ref().map ( |callback|
+                                            callback(key.to_string())
+                                        );
+                                    }
                                 }
-                                else if self.conf.wm_actions.contains_key(&key.to_string()) {
+                                if self.conf.wm_actions.contains_key(&key.to_string()) {
                                     let _ = self.run_wm_action(&key);
                                 }
                                 else if self.conf.custom_actions.contains_key(&key.to_string()) {
@@ -525,14 +586,15 @@ impl UmberWM {
 
 pub fn umberwm(conf: Conf) -> UmberWM {
     let (conn, _) = xcb::Connection::connect(None).unwrap();
-    let workspaces = conf.workspaces_names.clone().into_iter().map( |x|
+    let conf_workspaces_flatten : Vec<Key> = conf.workspaces_names.clone().into_iter().flatten().collect();
+    let workspaces = conf_workspaces_flatten.into_iter().map( |x|
             (x, Workspace {
                 layout: Layout::BSPV,
                 windows: vec![],
                 focus: 0,
         })).into_iter().collect();
     let xmodmap_pke = xmodmap_pke().unwrap();
-    let current_workspace = conf.workspaces_names[0].to_string();
+    let current_workspace = conf.workspaces_names.get(0).unwrap()[0].to_string();
     let mut wm = UmberWM {
         conf: conf,
         current_workspace: current_workspace,
@@ -542,6 +604,7 @@ pub fn umberwm(conf: Conf) -> UmberWM {
         button_press_geometry: None,
         mouse_move_start: None,
         xmodmap_pke: xmodmap_pke,
+        displays_geometries: Vec::new(),
     };
     wm.init();
     wm
