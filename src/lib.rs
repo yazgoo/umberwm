@@ -133,22 +133,24 @@ fn key_to_keycode(xmodmap_pke: &XmodmapPke, key: &Key) -> Option<u8> {
 }
 
 
-fn unmap_workspace_windows(conn: &xcb::Connection, windows: &mut Vec<Window>, focus: usize, move_window: bool) -> Option<Window> {
+fn unmap_workspace_windows(conn: &xcb::Connection, windows: &mut Vec<Window>, focus: usize, move_window: bool, same_display: bool) -> Option<Window> {
     let mut window_to_move = None;
     for (i, window) in windows.iter().enumerate() {
         if move_window && i == focus {
             window_to_move = Some(*window);
         }
         else {
-            xcb::unmap_window(conn, *window);
+            if same_display {
+                xcb::unmap_window(conn, *window);
+            }
         }
     }
     window_to_move
 }
 
-fn change_workspace(conn: &xcb::Connection, workspaces: &mut HashMap<WorkspaceName, Workspace>, previous_workspace: WorkspaceName, next_workspace: WorkspaceName, move_window: bool) -> Result<WorkspaceName, Box<dyn Error>> {
+fn change_workspace(conn: &xcb::Connection, workspaces: &mut HashMap<WorkspaceName, Workspace>, previous_workspace: WorkspaceName, next_workspace: WorkspaceName, move_window: bool, same_display: bool) -> Result<WorkspaceName, Box<dyn Error>> {
     let workspace = workspaces.get_mut(&previous_workspace).ok_or("workspace not found")?;
-    let window_to_move = unmap_workspace_windows(conn, &mut workspace.windows, workspace.focus, move_window);
+    let window_to_move = unmap_workspace_windows(conn, &mut workspace.windows, workspace.focus, move_window, same_display);
     match window_to_move {
         Some(w) => {
             workspace.windows.retain( |x| *x != w );
@@ -245,7 +247,7 @@ impl UmberWM {
         let mut non_float_windows = workspace.windows.clone();
         non_float_windows.retain(|w| !self.float_windows.contains(&w));
         let count = non_float_windows.len();
-        if count == 0 {
+        if count == 0 || display >= self.displays_geometries.len() {
             return
         }
         let display_geometry = self.displays_geometries.get(display).unwrap();
@@ -546,7 +548,7 @@ impl UmberWM {
                                 let workspaces_names_by_display = self.conf.workspaces_names.clone();
                                 for (display, workspaces_names) in workspaces_names_by_display.iter().enumerate() {
                                     if workspaces_names.contains(key) {
-                                        match change_workspace(&self.conn, &mut self.workspaces, self.current_workspace.to_string(), key.to_string(), (key_press.state() as u32 ) & xcb::MOD_MASK_SHIFT != 0) {
+                                        match change_workspace(&self.conn, &mut self.workspaces, self.current_workspace.to_string(), key.to_string(), (key_press.state() as u32 ) & xcb::MOD_MASK_SHIFT != 0, workspaces_names.contains(&self.current_workspace)) {
                                             Ok(workspace) => { 
                                                 self.current_workspace = workspace;
                                                 let workspace = self.workspaces.get(&self.current_workspace).ok_or("workspace not found").unwrap().clone();
