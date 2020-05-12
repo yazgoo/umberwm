@@ -1,8 +1,10 @@
 # umberwm :ram:
 
-a minimalistic X window manager based on tinywm, inspired by qtile, here is video introduction:
+Minimalistic X window manager based on tinywm, inspired by qtile.
 
-[![UmberWM Screenshot](screenshot.jpg)](https://youtu.be/5XdFNEq69N0)
+![UmberWM Screenshot](screenshot.jpg)
+
+video introduction [on LBRY](https://open.lbry.com/@goo:c/umberwm:e?r=FKWhS2Vay3CVr66qMZD98HdsLQ2LN7za) or [on youtube](https://youtu.be/5XdFNEq69N0).
 
 # prerequisites
 
@@ -11,7 +13,7 @@ you should have xmodmap installed
 # design goals and features
 
   - kiss: only window management (no taskbar, system tray, ...), complex stuff should be done using other programs (rofi, ...)
-  - configuration as code (like qtile, dwm)
+  - configuration as code (like qtile, dwm, xmonad)
   - tiled by default (Binary space partitioning)
   - supports workspaces
   - supports multiple displays
