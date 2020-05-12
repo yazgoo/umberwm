@@ -14,7 +14,8 @@ you should have xmodmap installed
   - configuration as code (like qtile, dwm)
   - tiled by default (Binary space partitioning)
   - supports workspaces
-  - single file (~500 LoC)
+  - supports multiple displays
+  - single file (~600 LoC)
 
 # using it
 
