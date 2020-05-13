@@ -375,7 +375,17 @@ impl UmberWM {
         match action {
             Actions::CloseWindow => {
                 let window = workspace.windows.get(workspace.focus).ok_or("window not found")?;
-                xcb::destroy_window(&self.conn, *window);
+                let wm_delete_window = xcb::intern_atom(&self.conn, false, "WM_DELETE_WINDOW").get_reply()?.atom();
+                let wm_protocols = xcb::intern_atom(&self.conn, false, "WM_PROTOCOLS").get_reply()?.atom();
+                let data = xcb::ClientMessageData::from_data32([
+                    wm_delete_window,
+                    xcb::CURRENT_TIME,
+                    0, 0, 0,
+                ]);
+                let ev = xcb::ClientMessageEvent::new(32, *window,
+                    wm_protocols, data);
+                xcb::send_event(&self.conn, false, *window, xcb::EVENT_MASK_NO_EVENT, &ev);
+                self.conn.flush();
             },
             Actions::SwitchWindow => {
                 if workspace.windows.len() > 0 {
