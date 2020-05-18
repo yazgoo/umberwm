@@ -52,7 +52,6 @@ pub struct Geometry(u32, u32, u32, u32);
 
 pub struct WindowBorder {
     pub width: u32,
-    pub gap: u32,
     pub focus_color: Color,
     pub normal_color: Color,
 }
@@ -64,11 +63,13 @@ struct Workspace {
     focus: usize,
 }
 
+#[derive(Clone, Debug)]
 pub struct DisplayBorder {
     pub left: u32,
     pub right: u32,
     pub bottom: u32,
     pub top: u32,
+    pub gap: u32,
 }
 
 type DisplayId = usize;
@@ -82,7 +83,7 @@ pub struct EventsCallbacks {
 pub struct Conf {
     pub meta: Meta,
     pub border: WindowBorder,
-    pub display_border: DisplayBorder,
+    pub display_borders: Vec<DisplayBorder>,
     pub workspaces_names: Vec<Vec<WorkspaceName>>,
     pub custom_actions: HashMap<Key, CustomAction>,
     pub wm_actions: HashMap<Key, Actions>,
@@ -247,6 +248,17 @@ impl UmberWM {
     }
 
 
+    fn get_display_border(&mut self, display: usize)-> DisplayBorder {
+        let display_border_i = if display >= self.conf.display_borders.len() {
+            self.conf.display_borders.len() - 1
+        }
+        else {
+            display
+        };
+        self.conf.display_borders[display_border_i].clone()
+    }
+
+
     fn resize_workspace_windows(&mut self, workspace: &Workspace, mut display: usize) {
         let mut non_float_windows = workspace.windows.clone();
         non_float_windows.retain(|w| !self.float_windows.contains(&w));
@@ -257,11 +269,12 @@ impl UmberWM {
         if display >= self.displays_geometries.len() {
             display = self.displays_geometries.len() - 1;
         }
+        let display_border = self.get_display_border(display);
         let display_geometry = self.displays_geometries.get(display).unwrap();
-        let width = display_geometry.2 as u32 - self.conf.display_border.right - self.conf.display_border.left;
-        let height = display_geometry.3 as u32 - self.conf.display_border.top - self.conf.display_border.bottom;
-        let left = display_geometry.0 + self.conf.display_border.left;
-        let top = display_geometry.1 + self.conf.display_border.top;
+        let width = display_geometry.2 as u32 - display_border.right - display_border.left;
+        let height = display_geometry.3 as u32 - display_border.top - display_border.bottom;
+        let left = display_geometry.0 + display_border.left;
+        let top = display_geometry.1 + display_border.top;
         let geos = match workspace.layout {
             Layout::BSPV => {
                 geometries_bsp(0, count, left, top, width, height, 1)},
@@ -275,10 +288,10 @@ impl UmberWM {
                 for (i, geo) in geos.iter().enumerate() {
                     match non_float_windows.get(i) {
                         Some(window) => {xcb::configure_window(&self.conn, *window, &[
-                            (xcb::CONFIG_WINDOW_X as u16, geo.0 + self.conf.border.gap),
-                            (xcb::CONFIG_WINDOW_Y as u16, geo.1 + self.conf.border.gap),
-                            (xcb::CONFIG_WINDOW_WIDTH as u16, geo.2.saturating_sub(2 * self.conf.border.width + 2 * self.conf.border.gap)),
-                            (xcb::CONFIG_WINDOW_HEIGHT as u16, geo.3.saturating_sub(2 * self.conf.border.width + 2 * self.conf.border.gap)),
+                            (xcb::CONFIG_WINDOW_X as u16, geo.0 + display_border.gap),
+                            (xcb::CONFIG_WINDOW_Y as u16, geo.1 + display_border.gap),
+                            (xcb::CONFIG_WINDOW_WIDTH as u16, geo.2.saturating_sub(2 * self.conf.border.width + 2 * display_border.gap)),
+                            (xcb::CONFIG_WINDOW_HEIGHT as u16, geo.3.saturating_sub(2 * self.conf.border.width + 2 * display_border.gap)),
                             (xcb::CONFIG_WINDOW_BORDER_WIDTH as u16, self.conf.border.width),
                         ]
                         );
@@ -290,10 +303,10 @@ impl UmberWM {
             Layout::Monocle => {
                 match workspace.windows.get(workspace.focus) {
                     Some(window) => {xcb::configure_window(&self.conn, *window, &[
-                        (xcb::CONFIG_WINDOW_X as u16, geos[0].0 + self.conf.border.gap),
-                        (xcb::CONFIG_WINDOW_Y as u16, geos[0].1 + self.conf.border.gap),
-                        (xcb::CONFIG_WINDOW_WIDTH as u16, geos[0].2.saturating_sub(2 * self.conf.border.width + 2 * self.conf.border.gap)),
-                        (xcb::CONFIG_WINDOW_HEIGHT as u16, geos[0].3.saturating_sub(2 * self.conf.border.width + 2 * self.conf.border.gap)),
+                        (xcb::CONFIG_WINDOW_X as u16, geos[0].0 + display_border.gap),
+                        (xcb::CONFIG_WINDOW_Y as u16, geos[0].1 + display_border.gap),
+                        (xcb::CONFIG_WINDOW_WIDTH as u16, geos[0].2.saturating_sub(2 * self.conf.border.width + 2 * display_border.gap)),
+                        (xcb::CONFIG_WINDOW_HEIGHT as u16, geos[0].3.saturating_sub(2 * self.conf.border.width + 2 * display_border.gap)),
                         (xcb::CONFIG_WINDOW_BORDER_WIDTH as u16, self.conf.border.width),
                         (xcb::CONFIG_WINDOW_STACK_MODE as u16, xcb::STACK_MODE_ABOVE),
                     ]
