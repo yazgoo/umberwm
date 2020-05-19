@@ -376,6 +376,13 @@ impl UmberWM {
             xcb::set_input_focus(&self.conn, xcb::INPUT_FOCUS_PARENT as u8, *window, 0);
             let workspace = self.workspaces.get_mut(&self.current_workspace).ok_or("workspace not found")?;
             workspace.windows.iter().position(|x| x == window).map(|i| workspace.focus = i );
+
+            let net_active_window = xcb::intern_atom(&self.conn, false, "_NET_ACTIVE_WINDOW").get_reply()?.atom();
+            let setup = self.conn.get_setup();
+            let root = setup.roots().nth(0).ok_or("roots 0 not found")?.root();
+            let data = vec![*window];
+            xproto::change_property(&self.conn, xcb::PROP_MODE_REPLACE as u8, root, net_active_window, xproto::ATOM_WINDOW, 32, &data[..]);
+
         }
         Ok(())
     }
