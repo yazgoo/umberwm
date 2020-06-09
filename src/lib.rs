@@ -460,6 +460,10 @@ impl UmberWM {
         if auto_float_types.contains(&window_type) {
             return Ok(())
         }
+        let normal = window_types_from_list(&self.conn, &vec!["normal".to_string()]);
+        if !normal.contains(&window_type) {
+            return Ok(())
+        }
         let wm_class : Vec<&str> = wm_class.split('\0').collect();
         match self.workspaces.get_mut(&self.current_workspace) {
             Some(workspace) => {
