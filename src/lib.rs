@@ -472,6 +472,7 @@ impl UmberWM {
                         self.float_windows.push(window);
                     }
                     workspace.windows.push(window);
+                    workspace.focus = workspace.windows.len() - 1;
                     let workspace2 = workspace.clone();
                     let workspaces_names_by_display = self.conf.workspaces_names.clone();
                     for (display, workspaces_names) in workspaces_names_by_display.iter().enumerate() {
@@ -512,8 +513,10 @@ impl UmberWM {
         for (_, workspace) in &mut self.workspaces {
             if workspace.windows.contains(&window) {
                 workspace.windows.retain(|&x| x != window);
+                if workspace.focus > 0 {
+                    workspace.focus = workspace.focus - 1;
+                }
                 workspace2 = Some(workspace.clone());
-                workspace.focus = 0;
             }
         }
         let workspaces_names_by_display = self.conf.workspaces_names.clone();
@@ -524,7 +527,10 @@ impl UmberWM {
             }
         }
 
-        workspace2.map(|workspace|self.resize_workspace_windows(&workspace, dis));
+        workspace2.map(|workspace| { 
+            workspace.windows.get(workspace.focus).map(|previous_window| self.focus_unfocus(previous_window, true));
+            self.resize_workspace_windows(&workspace, dis);
+        });
     }
 
     pub fn run(&mut self) {
