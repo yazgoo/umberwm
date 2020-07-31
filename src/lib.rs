@@ -88,7 +88,6 @@ pub struct Conf {
     pub custom_actions: HashMap<Key, CustomAction>,
     pub wm_actions: HashMap<Key, Actions>,
     pub float_classes: Vec<String>,
-    pub auto_float_types: Vec<String>,
     pub events_callbacks: EventsCallbacks,
 }
 
@@ -456,12 +455,14 @@ impl UmberWM {
     fn setup_new_window(&mut self, window: u32) -> Result<(), Box<dyn Error>> {
         let wm_class = self.get_str_property(window, "WM_CLASS").ok_or("failed getting wm class")?;
         let window_type = self.get_atom_property(window, "_NET_WM_WINDOW_TYPE")?;
-        let auto_float_types =  window_types_from_list(&self.conn, &self.conf.auto_float_types);
-        if auto_float_types.contains(&window_type) {
-            return Ok(())
-        }
-        let normal = window_types_from_list(&self.conn, &vec!["normal".to_string()]);
-        if !normal.contains(&window_type) {
+        let window_types = window_types_from_list(&self.conn, &vec![
+            "utility".to_string(),
+            "notification".to_string(),
+            "toolbar".to_string(),
+            "splash".to_string(),
+            "dialog".to_string(),
+        ]);
+        if window_types.contains(&window_type) {
             return Ok(())
         }
         let wm_class : Vec<&str> = wm_class.split('\0').collect();
