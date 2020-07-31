@@ -461,6 +461,7 @@ impl UmberWM {
             "toolbar".to_string(),
             "splash".to_string(),
             "dialog".to_string(),
+            "dock".to_string(),
         ]);
         if window_types.contains(&window_type) {
             return Ok(())
