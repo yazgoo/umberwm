@@ -456,6 +456,9 @@ impl UmberWM {
         let wm_class = self.get_str_property(window, "WM_CLASS").ok_or("failed getting wm class")?;
         let window_type = self.get_atom_property(window, "_NET_WM_WINDOW_TYPE")?;
         let window_types = window_types_from_list(&self.conn, &vec![
+            "popup_menu".to_string(),
+            "tooltip".to_string(),
+
             "utility".to_string(),
             "notification".to_string(),
             "toolbar".to_string(),
@@ -463,10 +466,18 @@ impl UmberWM {
             "dialog".to_string(),
             "dock".to_string(),
         ]);
+        let wm_class : Vec<&str> = wm_class.split('\0').collect();
+        println!("UGUU: {} {}", xcb::get_atom_name(&self.conn, window_type).get_reply()?.name(), wm_class.join("-"));
         if window_types.contains(&window_type) {
             return Ok(())
+        } else {
+            if "_KDE_NET_WM_WINDOW_TYPE_OVERRIDE" == xcb::get_atom_name(&self.conn, window_type).get_reply()?.name() {
+                return Ok(())
+            }
         }
-        let wm_class : Vec<&str> = wm_class.split('\0').collect();
+        if wm_class.len() != 0 && self.conf.float_classes.contains(&wm_class[0].to_string()) && wm_class[0] == "xscreensaver" { 
+            return Ok(())
+        }
         match self.workspaces.get_mut(&self.current_workspace) {
             Some(workspace) => {
                 if !workspace.windows.contains(&window) {
