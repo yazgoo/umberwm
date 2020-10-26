@@ -453,6 +453,14 @@ impl UmberWM {
     }
 
     fn setup_new_window(&mut self, window: u32) -> Result<(), Box<dyn Error>> {
+        for (_, workspace) in &self.workspaces {
+            for workspace_window in &workspace.windows {
+                if &window == workspace_window {
+                    /* the window already exist in a workspace */
+                    return Ok(())
+                }
+            }
+        }
         let wm_class = self.get_str_property(window, "WM_CLASS").ok_or("failed getting wm class")?;
         let window_type = self.get_atom_property(window, "_NET_WM_WINDOW_TYPE")?;
         let window_types = window_types_from_list(&self.conn, &vec![
