@@ -23,7 +23,7 @@ fn xmodmap_pke() -> Result<XmodmapPke, Box<dyn Error>> {
 }
 
 pub enum Actions {
-    SwitchWindow, CloseWindow, ChangeLayout,
+    SwitchWindow, CloseWindow, ChangeLayout, ToggleGap
 }
 
 pub enum Meta {
@@ -89,6 +89,7 @@ pub struct Conf {
     pub wm_actions: HashMap<Key, Actions>,
     pub float_classes: Vec<String>,
     pub events_callbacks: EventsCallbacks,
+    pub with_gap: bool,
 }
 
 #[derive(Clone)]
@@ -274,6 +275,12 @@ impl UmberWM {
         let height = display_geometry.3 as u32 - display_border.top - display_border.bottom;
         let left = display_geometry.0 + display_border.left;
         let top = display_geometry.1 + display_border.top;
+        let gap = if self.conf.with_gap {
+            display_border.gap
+        }
+        else {
+            0
+        };
         let geos = match workspace.layout {
             Layout::BSPV => {
                 geometries_bsp(0, count, left, top, width, height, 1)},
@@ -287,10 +294,10 @@ impl UmberWM {
                 for (i, geo) in geos.iter().enumerate() {
                     match non_float_windows.get(i) {
                         Some(window) => {xcb::configure_window(&self.conn, *window, &[
-                            (xcb::CONFIG_WINDOW_X as u16, geo.0 + display_border.gap),
-                            (xcb::CONFIG_WINDOW_Y as u16, geo.1 + display_border.gap),
-                            (xcb::CONFIG_WINDOW_WIDTH as u16, geo.2.saturating_sub(2 * self.conf.border.width + 2 * display_border.gap)),
-                            (xcb::CONFIG_WINDOW_HEIGHT as u16, geo.3.saturating_sub(2 * self.conf.border.width + 2 * display_border.gap)),
+                            (xcb::CONFIG_WINDOW_X as u16, geo.0 + gap),
+                            (xcb::CONFIG_WINDOW_Y as u16, geo.1 + gap),
+                            (xcb::CONFIG_WINDOW_WIDTH as u16, geo.2.saturating_sub(2 * self.conf.border.width + 2 * gap)),
+                            (xcb::CONFIG_WINDOW_HEIGHT as u16, geo.3.saturating_sub(2 * self.conf.border.width + 2 * gap)),
                             (xcb::CONFIG_WINDOW_BORDER_WIDTH as u16, self.conf.border.width),
                         ]
                         );
@@ -302,10 +309,10 @@ impl UmberWM {
             Layout::Monocle => {
                 match workspace.windows.get(workspace.focus) {
                     Some(window) => {xcb::configure_window(&self.conn, *window, &[
-                        (xcb::CONFIG_WINDOW_X as u16, geos[0].0 + display_border.gap),
-                        (xcb::CONFIG_WINDOW_Y as u16, geos[0].1 + display_border.gap),
-                        (xcb::CONFIG_WINDOW_WIDTH as u16, geos[0].2.saturating_sub(2 * self.conf.border.width + 2 * display_border.gap)),
-                        (xcb::CONFIG_WINDOW_HEIGHT as u16, geos[0].3.saturating_sub(2 * self.conf.border.width + 2 * display_border.gap)),
+                        (xcb::CONFIG_WINDOW_X as u16, geos[0].0 + gap),
+                        (xcb::CONFIG_WINDOW_Y as u16, geos[0].1 + gap),
+                        (xcb::CONFIG_WINDOW_WIDTH as u16, geos[0].2.saturating_sub(2 * self.conf.border.width + 2 * gap)),
+                        (xcb::CONFIG_WINDOW_HEIGHT as u16, geos[0].3.saturating_sub(2 * self.conf.border.width + 2 * gap)),
                         (xcb::CONFIG_WINDOW_BORDER_WIDTH as u16, self.conf.border.width),
                         (xcb::CONFIG_WINDOW_STACK_MODE as u16, xcb::STACK_MODE_ABOVE),
                     ]
@@ -417,6 +424,9 @@ impl UmberWM {
                     Layout::Monocle => Layout::BSPH,
                     Layout::BSPH => Layout::BSPV,
                 }
+            },
+            Actions::ToggleGap => {
+               self.conf.with_gap =  !self.conf.with_gap;
             },
         };
         for (display, workspaces_names) in workspaces_names_by_display.iter().enumerate() {
