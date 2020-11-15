@@ -30,7 +30,7 @@ pub enum Meta {
     Mod1, Mod4
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 enum Layout {
     BSPV,
     Monocle,
@@ -369,20 +369,12 @@ impl UmberWM {
     }
 
     fn focus_unfocus(&mut self, window: &xcb::Window, do_focus: bool) -> Result<(), Box<dyn Error>> {
-        xcb::change_window_attributes(&self.conn, *window, &[
-            (xcb::CW_BORDER_PIXEL, 
-             if do_focus {
-                 self.conf.border.focus_color
-             } else {
-                 self.conf.border.normal_color
-             }
-            ),
-        ]);
+        let mut border_focus = false;
         if do_focus {
             xcb::set_input_focus(&self.conn, xcb::INPUT_FOCUS_PARENT as u8, *window, 0);
             let workspace = self.workspaces.get_mut(&self.current_workspace).ok_or("workspace not found")?;
             workspace.windows.iter().position(|x| x == window).map(|i| workspace.focus = i );
-
+            border_focus = !((workspace.windows.len() == 1 || workspace.layout == Layout::Monocle) && self.displays_geometries.len() == 1);
             let net_active_window = xcb::intern_atom(&self.conn, false, "_NET_ACTIVE_WINDOW").get_reply()?.atom();
             let setup = self.conn.get_setup();
             let root = setup.roots().nth(0).ok_or("roots 0 not found")?.root();
@@ -390,6 +382,15 @@ impl UmberWM {
             xproto::change_property(&self.conn, xcb::PROP_MODE_REPLACE as u8, root, net_active_window, xproto::ATOM_WINDOW, 32, &data[..]);
 
         }
+        xcb::change_window_attributes(&self.conn, *window, &[
+            (xcb::CW_BORDER_PIXEL, 
+             if border_focus {
+                 self.conf.border.focus_color
+             } else {
+                 self.conf.border.normal_color
+             }
+            ),
+        ]);
         Ok(())
     }
 
@@ -493,8 +494,12 @@ impl UmberWM {
                 return Ok(())
             }
         }
-        if wm_class.len() != 0 && self.conf.float_classes.contains(&wm_class[0].to_string()) && wm_class[0] == "xscreensaver" { 
-            return Ok(())
+        if wm_class.len() != 0 {
+            for i in 0..wm_class.len() {
+                if self.conf.float_classes.contains(&wm_class[i].to_string()) && wm_class[i] == "xscreensaver" { 
+                    return Ok(())
+                }
+            }
         }
         match self.workspaces.get_mut(&self.current_workspace) {
             Some(workspace) => {
