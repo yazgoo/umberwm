@@ -475,7 +475,9 @@ impl UmberWM {
         let wm_class = self.get_str_property(window, "WM_CLASS").ok_or("failed getting wm class")?;
         let window_type = self.get_atom_property(window, "_NET_WM_WINDOW_TYPE")?;
         let window_types = window_types_from_list(&self.conn, &vec![
+            "menu".to_string(),
             "popup_menu".to_string(),
+            "dropdown_menu".to_string(),
             "tooltip".to_string(),
 
             "utility".to_string(),
@@ -496,7 +498,7 @@ impl UmberWM {
         }
         if wm_class.len() != 0 {
             for i in 0..wm_class.len() {
-                if self.conf.float_classes.contains(&wm_class[i].to_string()) && wm_class[i] == "xscreensaver" { 
+                if self.conf.float_classes.contains(&wm_class[i].to_string()) || wm_class[i] == "xscreensaver" { 
                     return Ok(())
                 }
             }
