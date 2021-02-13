@@ -87,6 +87,7 @@ pub struct Conf {
     pub workspaces_names: Vec<Vec<WorkspaceName>>,
     pub custom_actions: HashMap<Key, CustomAction>,
     pub wm_actions: HashMap<Key, Actions>,
+    pub ignore_classes: Vec<String>,
     pub float_classes: Vec<String>,
     pub events_callbacks: EventsCallbacks,
     pub with_gap: bool,
@@ -498,7 +499,7 @@ impl UmberWM {
         }
         if wm_class.len() != 0 {
             for i in 0..wm_class.len() {
-                if self.conf.float_classes.contains(&wm_class[i].to_string()) || wm_class[i] == "xscreensaver" { 
+                if wm_class[i] == "xscreensaver" || self.conf.ignore_classes.contains(&wm_class[i].to_string()) { 
                     return Ok(())
                 }
             }
