@@ -203,7 +203,6 @@ fn change_workspace(conn: &xcb::Connection, workspaces: &mut HashMap<WorkspaceNa
         }
     }
 
-
     fn window_types_from_list(conn: &xcb::Connection, types_names: &Vec<String>) -> Vec<xcb::Atom> {
         types_names.into_iter().map(|x| {
             let name = format!("_NET_WM_WINDOW_TYPE_{}", x.to_uppercase());
@@ -493,7 +492,7 @@ impl UmberWM {
         if window_types.contains(&window_type) {
             return Ok(())
         } else {
-            if "_KDE_NET_WM_WINDOW_TYPE_OVERRIDE" == xcb::get_atom_name(&self.conn, window_type).get_reply()?.name() {
+            if "_KDE_NET_WM_WINDOW_TYPE_OVERRIDE" == xcb::get_atom_name(&self.conn, window_type).get_reply()?.name() || xcb::get_atom_name(&self.conn, window_type).get_reply()?.name() == "WM_ZOOM_HINTS" {
                 return Ok(())
             }
         }
