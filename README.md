@@ -1,5 +1,7 @@
 # umberwm :ram:
 
+[![Discord](https://img.shields.io/badge/discord--blue?logo=discord)](https://discord.gg/F684Y8rYwZ)
+
 Minimalistic X window manager based on tinywm, inspired by qtile.
 
 ![UmberWM Screenshot](screenshot.jpg)

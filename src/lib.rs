@@ -486,13 +486,14 @@ impl UmberWM {
             "splash".to_string(),
             "dialog".to_string(),
             "dock".to_string(),
+            //"dnd".to_string(),
         ]);
         let wm_class : Vec<&str> = wm_class.split('\0').collect();
-        println!("UGUU: {} {}", xcb::get_atom_name(&self.conn, window_type).get_reply()?.name(), wm_class.join("-"));
+        println!("UGUU: {} {} {}", window, xcb::get_atom_name(&self.conn, window_type).get_reply()?.name(), wm_class.join("-"));
         if window_types.contains(&window_type) {
             return Ok(())
         } else {
-            if "_KDE_NET_WM_WINDOW_TYPE_OVERRIDE" == xcb::get_atom_name(&self.conn, window_type).get_reply()?.name() || xcb::get_atom_name(&self.conn, window_type).get_reply()?.name() == "WM_ZOOM_HINTS" {
+            if "_KDE_NET_WM_WINDOW_TYPE_OVERRIDE" == xcb::get_atom_name(&self.conn, window_type).get_reply()?.name() /*|| xcb::get_atom_name(&self.conn, window_type).get_reply()?.name() == "WM_ZOOM_HINTS"*/ {
                 return Ok(())
             }
         }
