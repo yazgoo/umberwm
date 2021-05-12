@@ -1,0 +1,8 @@
+#!/bin/bash
+
+# Setup display and sound preferences
+setup-displays
+setup-sound
+
+umberwm
+
