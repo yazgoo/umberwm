@@ -1,14 +1,15 @@
 extern crate umberwm;
 
-use std::process::Command;
-use umberwm::{Actions, Conf, umberwm, WindowBorder, DisplayBorder, Key, CustomAction, Meta, EventsCallbacks};
-use std::env;
 use std::collections::HashMap;
-use std::thread;
+use std::env;
 use std::path;
+use std::process::Command;
+use std::thread;
+use umberwm::{
+    umberwm, Actions, Conf, CustomAction, DisplayBorder, EventsCallbacks, Key, Meta, WindowBorder,
+};
 
 fn main() {
-
     let args: Vec<String> = env::args().collect();
 
     umberwm(Conf {
@@ -42,7 +43,7 @@ fn main() {
             vec![ "a".to_string(), "u".to_string(), "i".to_string()],
             vec!["b".to_string(), "eacute".to_string(), "o".to_string(), "p".to_string() ]],
         /* mapping between key names (must be a name in xmodmap -pke) and user-defined actions */
-        custom_actions: 
+        custom_actions:
             vec![
             ("r".to_string(), Box::new(|| { 
                 thread::spawn(
@@ -80,7 +81,7 @@ fn main() {
             ("q".to_string(), Box::new(|| std::process::exit(0))),
             ].into_iter().collect::<HashMap<Key, CustomAction>>(),
         /* mapping between key names (must be a name in xmodmap -pke) and window manager specific actions */
-        wm_actions: 
+        wm_actions:
             vec![
             ("space".to_string(), Actions::SwitchWindow),
             ("w".to_string(), Actions::CloseWindow),
@@ -95,7 +96,7 @@ fn main() {
         /* those are user custom callbacks */
         events_callbacks: EventsCallbacks {
             /* when we change a workspace */
-            on_change_workspace: Some(Box::new(|workspace, display| { 
+            on_change_workspace: Some(Box::new(|workspace, display| {
                 thread::spawn(
                     move || {
                         /* set the wallpaper using nitrogen */
@@ -106,9 +107,8 @@ fn main() {
                         }
                     }
                 );
-            })) 
+            }))
         },
         with_gap: true,
     }).run();
-
 }
