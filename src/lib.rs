@@ -125,16 +125,12 @@ pub struct UmberWM {
 }
 
 fn keycode_to_key(xmodmap_pke: &XmodmapPke, keycode: u8) -> Option<Key> {
-    match xmodmap_pke.get(&keycode) {
-        Some(x) => {
-            if x.len() > 0 {
-                Some(x[0].to_string())
-            } else {
-                None
-            }
+    if let Some(x) = xmodmap_pke.get(&keycode) {
+        if x.len() > 0 {
+            return Some(x[0].to_string());
         }
-        None => None,
     }
+    None
 }
 
 fn key_to_keycode(xmodmap_pke: &XmodmapPke, key: &Key) -> Option<u8> {
@@ -184,16 +180,13 @@ fn change_workspace(
         move_window,
         same_display,
     );
-    match window_to_move {
-        Some(w) => {
-            workspace.windows.retain(|x| *x != w);
-            if workspace.windows.len() > 0 {
-                workspace.focus = workspace.windows.len() - 1;
-            } else {
-                workspace.focus = 0;
-            }
+    if let Some(w) = window_to_move {
+        workspace.windows.retain(|x| *x != w);
+        if workspace.windows.len() > 0 {
+            workspace.focus = workspace.windows.len() - 1;
+        } else {
+            workspace.focus = 0;
         }
-        None => {}
     };
     let workspace = workspaces
         .get_mut(&next_workspace)
@@ -315,13 +308,11 @@ impl UmberWM {
         Ok(result)
     }
 
+    /// Returns the display border for the display requested, or for the last display if the index
+    /// is out of range.
     fn get_display_border(&mut self, display: usize) -> DisplayBorder {
-        let display_border_i = if display >= self.conf.display_borders.len() {
-            self.conf.display_borders.len() - 1
-        } else {
-            display
-        };
-        self.conf.display_borders[display_border_i].clone()
+        let i = std::cmp::min(self.conf.display_borders.len() - 1, display);
+        self.conf.display_borders[i].clone()
     }
 
     fn resize_workspace_windows(&mut self, workspace: &Workspace, mut display: usize) {
@@ -351,73 +342,66 @@ impl UmberWM {
             Layout::Monocle => geometries_bsp(0, 1, left, top, width, height, 1),
         };
         match workspace.layout {
-            Layout::BSPV | Layout::BSPH => {
-                for (i, geo) in geos.iter().enumerate() {
-                    match non_float_windows.get(i) {
-                        Some(window) => {
-                            xcb::configure_window(
-                                &self.conn,
-                                *window,
-                                &[
-                                    (xcb::CONFIG_WINDOW_X as u16, geo.0 + gap),
-                                    (xcb::CONFIG_WINDOW_Y as u16, geo.1 + gap),
-                                    (
-                                        xcb::CONFIG_WINDOW_WIDTH as u16,
-                                        geo.2.saturating_sub(2 * self.conf.border.width + 2 * gap),
-                                    ),
-                                    (
-                                        xcb::CONFIG_WINDOW_HEIGHT as u16,
-                                        geo.3.saturating_sub(2 * self.conf.border.width + 2 * gap),
-                                    ),
-                                    (
-                                        xcb::CONFIG_WINDOW_BORDER_WIDTH as u16,
-                                        self.conf.border.width,
-                                    ),
-                                ],
-                            );
-                        }
-                        None => {}
-                    }
-                }
-            }
-            Layout::Monocle => match workspace.windows.get(workspace.focus) {
-                Some(window) => {
-                    xcb::configure_window(
-                        &self.conn,
-                        *window,
-                        &[
-                            (xcb::CONFIG_WINDOW_X as u16, geos[0].0 + gap),
-                            (xcb::CONFIG_WINDOW_Y as u16, geos[0].1 + gap),
-                            (
-                                xcb::CONFIG_WINDOW_WIDTH as u16,
-                                geos[0]
-                                    .2
-                                    .saturating_sub(2 * self.conf.border.width + 2 * gap),
-                            ),
-                            (
-                                xcb::CONFIG_WINDOW_HEIGHT as u16,
-                                geos[0]
-                                    .3
-                                    .saturating_sub(2 * self.conf.border.width + 2 * gap),
-                            ),
-                            (
-                                xcb::CONFIG_WINDOW_BORDER_WIDTH as u16,
-                                self.conf.border.width,
-                            ),
-                            (xcb::CONFIG_WINDOW_STACK_MODE as u16, xcb::STACK_MODE_ABOVE),
-                        ],
-                    );
-                }
-                None => {}
-            },
+            Layout::BSPV | Layout::BSPH => self.resize_bsp(non_float_windows, geos, gap),
+            Layout::Monocle => self.resize_monocle(workspace, geos, gap),
         }
-        for (i, _) in workspace.windows.iter().enumerate() {
-            match workspace.windows.get(i) {
-                Some(window) => {
-                    let _ = self.focus_unfocus(window, i == workspace.focus);
-                }
-                None => {}
-            }
+        for (i, window) in workspace.windows.iter().enumerate() {
+            self.focus_unfocus(window, i == workspace.focus).ok();
+        }
+    }
+
+    fn resize_bsp(&self, non_float_windows: Vec<u32>, geos: Vec<Geometry>, gap: u32) {
+        for (window, geo) in non_float_windows.iter().zip(geos.iter()) {
+            xcb::configure_window(
+                &self.conn,
+                *window,
+                &[
+                    (xcb::CONFIG_WINDOW_X as u16, geo.0 + gap),
+                    (xcb::CONFIG_WINDOW_Y as u16, geo.1 + gap),
+                    (
+                        xcb::CONFIG_WINDOW_WIDTH as u16,
+                        geo.2.saturating_sub(2 * self.conf.border.width + 2 * gap),
+                    ),
+                    (
+                        xcb::CONFIG_WINDOW_HEIGHT as u16,
+                        geo.3.saturating_sub(2 * self.conf.border.width + 2 * gap),
+                    ),
+                    (
+                        xcb::CONFIG_WINDOW_BORDER_WIDTH as u16,
+                        self.conf.border.width,
+                    ),
+                ],
+            );
+        }
+    }
+
+    fn resize_monocle(&self, workspace: &Workspace, geos: Vec<Geometry>, gap: u32) {
+        if let Some(window) = workspace.windows.get(workspace.focus) {
+            xcb::configure_window(
+                &self.conn,
+                *window,
+                &[
+                    (xcb::CONFIG_WINDOW_X as u16, geos[0].0 + gap),
+                    (xcb::CONFIG_WINDOW_Y as u16, geos[0].1 + gap),
+                    (
+                        xcb::CONFIG_WINDOW_WIDTH as u16,
+                        geos[0]
+                            .2
+                            .saturating_sub(2 * self.conf.border.width + 2 * gap),
+                    ),
+                    (
+                        xcb::CONFIG_WINDOW_HEIGHT as u16,
+                        geos[0]
+                            .3
+                            .saturating_sub(2 * self.conf.border.width + 2 * gap),
+                    ),
+                    (
+                        xcb::CONFIG_WINDOW_BORDER_WIDTH as u16,
+                        self.conf.border.width,
+                    ),
+                    (xcb::CONFIG_WINDOW_STACK_MODE as u16, xcb::STACK_MODE_ABOVE),
+                ],
+            );
         }
     }
 
@@ -433,12 +417,13 @@ impl UmberWM {
             .get_extension_data(&mut randr::id())
             .unwrap()
             .first_event();
-        let _ = randr::select_input(
+        randr::select_input(
             &self.conn,
             screen.root(),
             randr::NOTIFY_MASK_CRTC_CHANGE as u16,
         )
-        .request_check();
+        .request_check()
+        .ok();
         for mod_mask in vec![mod_key, mod_key | xcb::MOD_MASK_SHIFT] {
             for workspace_name_in_display in &self.conf.workspaces_names {
                 for workspace_name in workspace_name_in_display {
@@ -660,7 +645,7 @@ impl UmberWM {
         for (_, workspace) in &self.workspaces {
             for workspace_window in &workspace.windows {
                 if &window == workspace_window {
-                    /* the window already exist in a workspace */
+                    // The window already exist in a workspace
                     return Ok(());
                 }
             }
@@ -682,7 +667,6 @@ impl UmberWM {
                 "splash".to_string(),
                 "dialog".to_string(),
                 "dock".to_string(),
-                //"dnd".to_string(),
             ],
         );
         let wm_class: Vec<&str> = wm_class.split('\0').collect();
@@ -701,7 +685,6 @@ impl UmberWM {
                 == xcb::get_atom_name(&self.conn, window_type)
                     .get_reply()?
                     .name()
-            /*|| xcb::get_atom_name(&self.conn, window_type).get_reply()?.name() == "WM_ZOOM_HINTS"*/
             {
                 return Ok(());
             }
@@ -715,29 +698,24 @@ impl UmberWM {
                 }
             }
         }
-        match self.workspaces.get_mut(&self.current_workspace) {
-            Some(workspace) => {
-                if !workspace.windows.contains(&window) {
-                    if wm_class.len() != 0
-                        && self.conf.float_classes.contains(&wm_class[0].to_string())
-                        && !self.float_windows.contains(&window)
-                    {
-                        self.float_windows.push(window);
-                    }
-                    workspace.windows.push(window);
-                    workspace.focus = workspace.windows.len() - 1;
-                    let workspace2 = workspace.clone();
-                    let workspaces_names_by_display = self.conf.workspaces_names.clone();
-                    for (display, workspaces_names) in
-                        workspaces_names_by_display.iter().enumerate()
-                    {
-                        if workspaces_names.contains(&self.current_workspace) {
-                            self.resize_workspace_windows(&workspace2, display);
-                        }
+        if let Some(workspace) = self.workspaces.get_mut(&self.current_workspace) {
+            if !workspace.windows.contains(&window) {
+                if wm_class.len() != 0
+                    && self.conf.float_classes.contains(&wm_class[0].to_string())
+                    && !self.float_windows.contains(&window)
+                {
+                    self.float_windows.push(window);
+                }
+                workspace.windows.push(window);
+                workspace.focus = workspace.windows.len() - 1;
+                let workspace2 = workspace.clone();
+                let workspaces_names_by_display = self.conf.workspaces_names.clone();
+                for (display, workspaces_names) in workspaces_names_by_display.iter().enumerate() {
+                    if workspaces_names.contains(&self.current_workspace) {
+                        self.resize_workspace_windows(&workspace2, display);
                     }
                 }
             }
-            None => {}
         }
         xcb::change_window_attributes(
             &self.conn,
@@ -832,116 +810,103 @@ impl UmberWM {
 
     pub fn run(&mut self) {
         loop {
-            match self.conn.wait_for_event() {
-                Some(event) => {
-                    let r = event.response_type();
-                    if r == xcb::MAP_NOTIFY as u8 {
-                        let map_notify: &xcb::MapNotifyEvent = unsafe { xcb::cast_event(&event) };
-                        let _ = self.setup_new_window(map_notify.window());
-                    }
-                    if r == self.randr_base + randr::NOTIFY {
-                        self.displays_geometries = self.get_displays_geometries().unwrap();
-                    }
-                    if r == xcb::DESTROY_NOTIFY as u8 {
-                        let map_notify: &xcb::DestroyNotifyEvent =
-                            unsafe { xcb::cast_event(&event) };
-                        self.destroy_window(map_notify.window());
-                    } else if r == xcb::BUTTON_PRESS as u8 {
-                        let event: &xcb::ButtonPressEvent = unsafe { xcb::cast_event(&event) };
-                        match xcb::get_geometry(&self.conn, event.child()).get_reply() {
-                            Ok(geometry) => {
-                                self.button_press_geometry = Some(Geometry(
-                                    geometry.x() as u32,
-                                    geometry.y() as u32,
-                                    geometry.width() as u32,
-                                    geometry.height() as u32,
-                                ));
-                            }
-                            Err(_) => {}
-                        }
-                        self.mouse_move_start = Some(MouseMoveStart {
-                            root_x: event.root_x(),
-                            root_y: event.root_y(),
-                            child: event.child(),
-                            detail: event.detail(),
-                        });
-                    } else if r == xcb::MOTION_NOTIFY as u8 {
-                        let event: &xcb::MotionNotifyEvent = unsafe { xcb::cast_event(&event) };
-                        let _ = self.resize_window(event);
-                    } else if r == xcb::LEAVE_NOTIFY as u8 {
-                        let event: &xcb::LeaveNotifyEvent = unsafe { xcb::cast_event(&event) };
-                        let _ = self.focus_unfocus(&event.event(), false);
-                    } else if r == xcb::ENTER_NOTIFY as u8 {
-                        let event: &xcb::EnterNotifyEvent = unsafe { xcb::cast_event(&event) };
-                        let _ = self.focus_unfocus(&event.event(), true);
-                    } else if r == xcb::BUTTON_RELEASE as u8 {
-                        self.mouse_move_start = None;
-                    } else if r == xcb::KEY_PRESS as u8 {
-                        let key_press: &xcb::KeyPressEvent = unsafe { xcb::cast_event(&event) };
-                        let keycode = key_press.detail();
-                        match &keycode_to_key(&self.xmodmap_pke, keycode) {
-                            Some(key) => {
-                                let workspaces_names_by_display =
-                                    self.conf.workspaces_names.clone();
-                                for (display, workspaces_names) in
-                                    workspaces_names_by_display.iter().enumerate()
-                                {
-                                    if workspaces_names.contains(key) {
-                                        match change_workspace(
-                                            &self.conn,
-                                            &mut self.workspaces,
-                                            self.current_workspace.to_string(),
-                                            key.to_string(),
-                                            (key_press.state() as u32) & xcb::MOD_MASK_SHIFT != 0,
-                                            workspaces_names.contains(&self.current_workspace)
-                                                || display >= self.displays_geometries.len()
-                                                || self.previous_display
-                                                    >= self.displays_geometries.len(),
-                                        ) {
-                                            Ok(workspace) => {
-                                                self.previous_display = display;
-                                                self.current_workspace = workspace;
-                                                let workspace = self
-                                                    .workspaces
-                                                    .get(&self.current_workspace)
-                                                    .ok_or("workspace not found")
-                                                    .unwrap()
-                                                    .clone();
-                                                self.resize_workspace_windows(&workspace, display);
-                                                let actual_display =
-                                                    if display >= self.displays_geometries.len() {
-                                                        self.displays_geometries.len() - 1
-                                                    } else {
-                                                        display
-                                                    };
-                                                self.conf
-                                                    .events_callbacks
-                                                    .on_change_workspace
-                                                    .as_ref()
-                                                    .map(|callback| {
-                                                        callback(key.to_string(), actual_display)
-                                                    });
-                                            }
-                                            Err(_) => {}
-                                        };
-                                    }
-                                }
-                                if self.conf.wm_actions.contains_key(&key.to_string()) {
-                                    let _ = self.run_wm_action(&key);
-                                } else if self.conf.custom_actions.contains_key(&key.to_string()) {
-                                    match self.conf.custom_actions.get(&key.to_string()) {
-                                        Some(action) => action(),
-                                        None => {}
-                                    }
-                                }
-                            }
-                            None => {}
-                        }
-                    }
+            if let Some(event) = self.conn.wait_for_event() {
+                let r = event.response_type();
+                if r == xcb::MAP_NOTIFY as u8 {
+                    let map_notify: &xcb::MapNotifyEvent = unsafe { xcb::cast_event(&event) };
+                    self.setup_new_window(map_notify.window()).ok();
                 }
-                None => {}
+                if r == self.randr_base + randr::NOTIFY {
+                    self.displays_geometries = self.get_displays_geometries().unwrap();
+                }
+                if r == xcb::DESTROY_NOTIFY as u8 {
+                    let map_notify: &xcb::DestroyNotifyEvent = unsafe { xcb::cast_event(&event) };
+                    self.destroy_window(map_notify.window());
+                } else if r == xcb::BUTTON_PRESS as u8 {
+                    let event: &xcb::ButtonPressEvent = unsafe { xcb::cast_event(&event) };
+                    self.handle_button_press(event);
+                } else if r == xcb::MOTION_NOTIFY as u8 {
+                    let event: &xcb::MotionNotifyEvent = unsafe { xcb::cast_event(&event) };
+                    self.resize_window(event).ok();
+                } else if r == xcb::LEAVE_NOTIFY as u8 {
+                    let event: &xcb::LeaveNotifyEvent = unsafe { xcb::cast_event(&event) };
+                    self.focus_unfocus(&event.event(), false).ok();
+                } else if r == xcb::ENTER_NOTIFY as u8 {
+                    let event: &xcb::EnterNotifyEvent = unsafe { xcb::cast_event(&event) };
+                    self.focus_unfocus(&event.event(), true).ok();
+                } else if r == xcb::BUTTON_RELEASE as u8 {
+                    self.mouse_move_start = None;
+                } else if r == xcb::KEY_PRESS as u8 {
+                    let event: &xcb::KeyPressEvent = unsafe { xcb::cast_event(&event) };
+                    self.handle_key_press(event);
+                }
             }
             self.conn.flush();
+        }
+    }
+
+    fn handle_button_press(&mut self, event: &xcb::ButtonPressEvent) {
+        if let Ok(geometry) = xcb::get_geometry(&self.conn, event.child()).get_reply() {
+            self.button_press_geometry = Some(Geometry(
+                geometry.x() as u32,
+                geometry.y() as u32,
+                geometry.width() as u32,
+                geometry.height() as u32,
+            ));
+        }
+        self.mouse_move_start = Some(MouseMoveStart {
+            root_x: event.root_x(),
+            root_y: event.root_y(),
+            child: event.child(),
+            detail: event.detail(),
+        });
+    }
+
+    fn handle_key_press(&mut self, event: &xcb::KeyPressEvent) {
+        let keycode = event.detail();
+        if let Some(key) = &keycode_to_key(&self.xmodmap_pke, keycode) {
+            let workspaces_names_by_display = self.conf.workspaces_names.clone();
+            for (display, workspaces_names) in workspaces_names_by_display.iter().enumerate() {
+                if workspaces_names.contains(key) {
+                    if let Ok(workspace) = change_workspace(
+                        &self.conn,
+                        &mut self.workspaces,
+                        self.current_workspace.to_string(),
+                        key.to_string(),
+                        (event.state() as u32) & xcb::MOD_MASK_SHIFT != 0,
+                        workspaces_names.contains(&self.current_workspace)
+                            || display >= self.displays_geometries.len()
+                            || self.previous_display >= self.displays_geometries.len(),
+                    ) {
+                        self.previous_display = display;
+                        self.current_workspace = workspace;
+                        let workspace = self
+                            .workspaces
+                            .get(&self.current_workspace)
+                            .ok_or("workspace not found")
+                            .unwrap()
+                            .clone();
+                        self.resize_workspace_windows(&workspace, display);
+                        let actual_display = if display >= self.displays_geometries.len() {
+                            self.displays_geometries.len() - 1
+                        } else {
+                            display
+                        };
+                        self.conf
+                            .events_callbacks
+                            .on_change_workspace
+                            .as_ref()
+                            .map(|callback| callback(key.to_string(), actual_display));
+                    }
+                }
+            }
+            if self.conf.wm_actions.contains_key(&key.to_string()) {
+                self.run_wm_action(&key).ok();
+            } else if self.conf.custom_actions.contains_key(&key.to_string()) {
+                if let Some(action) = self.conf.custom_actions.get(&key.to_string()) {
+                    action();
+                }
+            }
         }
     }
 }
