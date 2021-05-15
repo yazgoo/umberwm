@@ -1,10 +1,15 @@
 extern crate regex;
 extern crate xcb;
 
+use miniserde::{json, Deserialize, Serialize};
 use regex::Regex;
 use std::cmp::max;
 use std::collections::HashMap;
 use std::error::Error;
+use std::fs::remove_file;
+use std::fs::File;
+use std::io::prelude::*;
+use std::path::Path;
 use std::process::Command;
 use xcb::randr;
 use xcb::xproto;
@@ -29,6 +34,7 @@ fn xmodmap_pke() -> Result<XmodmapPke, Box<dyn Error>> {
 
 pub enum Actions {
     SwitchWindow,
+    SerializeAndQuit,
     CloseWindow,
     ChangeLayout,
     ToggleGap,
@@ -39,7 +45,7 @@ pub enum Meta {
     Mod4,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 enum Layout {
     Bspv,
     Monocle,
@@ -65,7 +71,7 @@ pub struct WindowBorder {
     pub normal_color: Color,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 struct Workspace {
     layout: Layout,
     windows: Vec<Window>,
@@ -108,6 +114,15 @@ struct MouseMoveStart {
     root_y: i16,
     child: Window,
     detail: u8,
+}
+
+const UMBERWM_STATE: &str = ".umberwm_state";
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct SerializableState {
+    float_windows: Vec<Window>,
+    workspaces: HashMap<WorkspaceName, Workspace>,
+    current_workspace: WorkspaceName,
 }
 
 pub struct UmberWM {
@@ -540,6 +555,17 @@ impl UmberWM {
         Ok(())
     }
 
+    fn serialize_and_quit(&mut self) -> Result<(), Box<dyn Error>> {
+        let mut file = File::create(UMBERWM_STATE)?;
+        let string = json::to_string(&SerializableState {
+            float_windows: self.float_windows.clone(),
+            workspaces: self.workspaces.clone(),
+            current_workspace: self.current_workspace.clone(),
+        });
+        file.write_all(string.as_bytes())?;
+        std::process::exit(123);
+    }
+
     fn run_wm_action(&mut self, key: &str) -> Result<(), Box<dyn Error>> {
         let workspaces_names_by_display = self.conf.workspaces_names.clone();
         let action = self
@@ -573,6 +599,9 @@ impl UmberWM {
                 let ev = xcb::ClientMessageEvent::new(32, *window, wm_protocols, data);
                 xcb::send_event(&self.conn, false, *window, xcb::EVENT_MASK_NO_EVENT, &ev);
                 self.conn.flush();
+            }
+            Actions::SerializeAndQuit => {
+                self.serialize_and_quit().ok();
             }
             Actions::SwitchWindow => {
                 if !workspace.windows.is_empty() {
@@ -902,33 +931,49 @@ impl UmberWM {
     }
 }
 
+fn load_serializable_state(conf: &Conf) -> Result<SerializableState, Box<dyn Error>> {
+    if Path::new(UMBERWM_STATE).exists() {
+        let mut file = File::open(UMBERWM_STATE)?;
+        let mut contents = String::new();
+        file.read_to_string(&mut contents)?;
+        let res: SerializableState = json::from_str(contents.as_str())?;
+        remove_file(UMBERWM_STATE)?;
+        Ok(res)
+    } else {
+        Ok(SerializableState {
+            float_windows: vec![],
+            workspaces: conf
+                .workspaces_names
+                .clone()
+                .into_iter()
+                .flatten()
+                .into_iter()
+                .map(|x| {
+                    (
+                        x,
+                        Workspace {
+                            layout: Layout::Bspv,
+                            windows: vec![],
+                            focus: 0,
+                        },
+                    )
+                })
+                .into_iter()
+                .collect(),
+            current_workspace: conf.workspaces_names.get(0).unwrap()[0].to_string(),
+        })
+    }
+}
+
 pub fn umberwm(conf: Conf) -> UmberWM {
     let (conn, _) = xcb::Connection::connect(None).unwrap();
-    let workspaces = conf
-        .workspaces_names
-        .clone()
-        .into_iter()
-        .flatten()
-        .into_iter()
-        .map(|x| {
-            (
-                x,
-                Workspace {
-                    layout: Layout::Bspv,
-                    windows: vec![],
-                    focus: 0,
-                },
-            )
-        })
-        .into_iter()
-        .collect();
+    let serializable_state = load_serializable_state(&conf).unwrap();
     let xmodmap_pke = xmodmap_pke().unwrap();
-    let current_workspace = conf.workspaces_names.get(0).unwrap()[0].to_string();
     let mut wm = UmberWM {
         conf,
-        current_workspace,
-        float_windows: vec![],
-        workspaces,
+        current_workspace: serializable_state.current_workspace,
+        float_windows: serializable_state.float_windows,
+        workspaces: serializable_state.workspaces,
         conn,
         button_press_geometry: None,
         mouse_move_start: None,

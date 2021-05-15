@@ -37,3 +37,26 @@ Add the following to your .xinitrc :
 ```shell
 exec /path/to/myumberwm mod4
 ```
+
+## hot reloading
+
+Hot reloading allows to restart umberwm while keeping its state (i.e. keeping track of windows and their relative workspaces).
+This is quite useful when you want to update your configuration.
+You can add hot reload in your `.xinitrc` by running umberwm in a loop via:
+
+```bash
+while true; do
+  echo starting umberwm...
+  /path/to/umberwm mod4
+  [ $? -ne 123 ] && break
+done
+```
+
+in your `wm_actions`, add
+
+```rust
+("d".to_string(), Actions::SerializeAndQuit),
+```
+
+In this example, when pushing 'mod4 + d', umberwm will serialize a state under `.umberwm_state` and exit with return code `123`.
+Then the `xinitrc` code will detect code `123`, causing a restart, umberwm will detect the serialized state, load it at startup and delete it.
