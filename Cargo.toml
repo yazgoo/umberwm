@@ -13,6 +13,7 @@ categories = ["GUI"]
 
 [dependencies]
 regex = "1.3"
+miniserde = "0.1"
 [dependencies.xcb]
 version = "0.9"
 features = ["randr"]
