@@ -21,7 +21,7 @@ You will need XCB bindings with the randr extension. On ubuntu you can install t
   - Tiled by default (Binary space partitioning)
   - Supports workspaces
   - Supports multiple displays
-  - Single file (~600 LoC)
+  - Single file (~1000 LoC)
 
 # Using it
 
