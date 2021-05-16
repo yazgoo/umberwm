@@ -58,7 +58,7 @@ fn main() {
         /* mapping between key names (must be a name in xmodmap -pke) and user-defined actions */
         custom_actions: vec![
             (
-                Keybind::new("r", meta),
+                Keybind::new(meta, "r"),
                 Box::new(|| {
                     thread::spawn(move || {
                         let _ = Command::new("rofi").arg("-show").arg("run").status();
@@ -66,7 +66,7 @@ fn main() {
                 }) as CustomAction,
             ),
             (
-                Keybind::new("Return", meta | MOD_MASK_SHIFT),
+                Keybind::new(meta | MOD_MASK_SHIFT, "Return"),
                 Box::new(|| {
                     thread::spawn(move || {
                         let _ = Command::new("bash").arg("t").status();
@@ -74,7 +74,7 @@ fn main() {
                 }),
             ),
             (
-                Keybind::new("l", meta),
+                Keybind::new(meta, "l"),
                 Box::new(|| {
                     thread::spawn(move || {
                         let _ = Command::new("lxlock");
@@ -82,7 +82,7 @@ fn main() {
                 }),
             ),
             (
-                Keybind::new("q", meta | MOD_MASK_SHIFT),
+                Keybind::new(meta | MOD_MASK_SHIFT, "q"),
                 Box::new(|| std::process::exit(0)),
             ),
         ]
@@ -90,10 +90,10 @@ fn main() {
         .collect::<HashMap<Keybind, CustomAction>>(),
         /* mapping between key names (must be a name in xmodmap -pke) and window manager specific actions */
         wm_actions: vec![
-            (Keybind::new("space", meta), Actions::SwitchWindow),
-            (Keybind::new("w", meta), Actions::CloseWindow),
-            (Keybind::new("f", meta), Actions::ChangeLayout),
-            (Keybind::new("g", meta), Actions::ToggleGap),
+            (Keybind::new(meta, "space"), Actions::SwitchWindow),
+            (Keybind::new(meta, "w"), Actions::CloseWindow),
+            (Keybind::new(meta, "f"), Actions::ChangeLayout),
+            (Keybind::new(meta, "g"), Actions::ToggleGap),
         ]
         .into_iter()
         .collect::<HashMap<Keybind, Actions>>(),

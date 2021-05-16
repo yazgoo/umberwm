@@ -22,19 +22,19 @@ type XmodmapPke = HashMap<u8, Vec<String>>;
 
 #[derive(Eq, PartialEq, Hash)]
 pub struct Keybind {
-    pub key: String,
     pub mod_mask: ModMask,
+    pub key: String,
 }
 
 impl Keybind {
-    pub fn new<S, U>(key: S, mod_mask: U) -> Self
+    pub fn new<M, K>(mod_mask: M, key: K) -> Self
     where
-        S: Into<String>,
-        U: Into<ModMask>,
+        M: Into<ModMask>,
+        K: Into<String>,
     {
         Keybind {
-            key: key.into(),
             mod_mask: mod_mask.into(),
+            key: key.into(),
         }
     }
 }
@@ -917,7 +917,7 @@ impl UmberWm {
         let keycode = event.detail();
         let mod_mask = event.state();
         if let Some(key) = &keycode_to_key(&self.xmodmap_pke, keycode) {
-            let keybind = Keybind::new(key, mod_mask);
+            let keybind = Keybind::new(mod_mask, key);
 
             self.handle_workspace_change(&keybind);
 
