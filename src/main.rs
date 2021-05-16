@@ -130,6 +130,7 @@ fn main() {
             ("space".to_string(), Actions::SwitchWindow),
             ("w".to_string(), Actions::CloseWindow),
             ("f".to_string(), Actions::ChangeLayout),
+            ("d".to_string(), Actions::SerializeAndQuit),
             ("g".to_owned(), Actions::ToggleGap),
         ]
         .into_iter()
