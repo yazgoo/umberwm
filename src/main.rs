@@ -6,19 +6,22 @@ use std::path;
 use std::process::Command;
 use std::thread;
 use umberwm::{
-    umberwm, Actions, Conf, CustomAction, DisplayBorder, EventsCallbacks, Key, Meta, WindowBorder,
+    umberwm, Actions, Conf, CustomAction, DisplayBorder, EventsCallbacks, Keybind, WindowBorder,
+    MOD_MASK_1, MOD_MASK_4, MOD_MASK_SHIFT,
 };
 
 fn main() {
     let args: Vec<String> = env::args().collect();
 
+    let meta = if args.len() > 1 && args[1] == "mod4" {
+        MOD_MASK_4
+    } else {
+        MOD_MASK_1
+    };
+
     let conf = Conf {
         /* the main key used to detect WM events */
-        meta: if args.len() > 1 && args[1] == "mod4" {
-            Meta::Mod4
-        } else {
-            Meta::Mod1
-        },
+        meta,
         /* borders defining space the WM wont tile windows to (usefull when using task bars) */
         display_borders: vec![
             DisplayBorder {
@@ -55,7 +58,7 @@ fn main() {
         /* mapping between key names (must be a name in xmodmap -pke) and user-defined actions */
         custom_actions: vec![
             (
-                "r".to_string(),
+                Keybind::new("r", meta),
                 Box::new(|| {
                     thread::spawn(move || {
                         let _ = Command::new("rofi").arg("-show").arg("run").status();
@@ -63,7 +66,7 @@ fn main() {
                 }) as CustomAction,
             ),
             (
-                "Return".to_string(),
+                Keybind::new("Return", meta | MOD_MASK_SHIFT),
                 Box::new(|| {
                     thread::spawn(move || {
                         let _ = Command::new("bash").arg("t").status();
@@ -71,15 +74,7 @@ fn main() {
                 }),
             ),
             (
-                "s".to_string(),
-                Box::new(|| {
-                    thread::spawn(move || {
-                        let _ = Command::new("bash").arg("alsaterm").status();
-                    } /* launch alsamixer in a terminal */);
-                }),
-            ),
-            (
-                "l".to_string(),
+                Keybind::new("l", meta),
                 Box::new(|| {
                     thread::spawn(move || {
                         let _ = Command::new("lxlock");
@@ -87,53 +82,21 @@ fn main() {
                 }),
             ),
             (
-                "n".to_string(),
-                Box::new(|| {
-                    thread::spawn(move || {
-                        let _ = Command::new("xcalib").arg("-i").arg("-a").status();
-                    });
-                }),
+                Keybind::new("q", meta | MOD_MASK_SHIFT),
+                Box::new(|| std::process::exit(0)),
             ),
-            (
-                "x".to_string(),
-                Box::new(|| {
-                    thread::spawn(move || {
-                        let _ = Command::new("t")
-                            .arg("--class")
-                            .arg("quickmarks")
-                            .arg("--position")
-                            .arg("0")
-                            .arg("18")
-                            .arg("--dimensions")
-                            .arg("100")
-                            .arg("40")
-                            .arg("--config-file")
-                            .arg("/home/yazgoo/.config/alacritty/alacritty_white.yml")
-                            .arg("-e")
-                            .arg("quickmarks")
-                            .status();
-                    });
-                }),
-            ),
-            (
-                "m".to_string(),
-                Box::new(|| {
-                    let _ = Command::new("autorandr").arg("--change").status();
-                }),
-            ),
-            ("q".to_string(), Box::new(|| std::process::exit(0))),
         ]
         .into_iter()
-        .collect::<HashMap<Key, CustomAction>>(),
+        .collect::<HashMap<Keybind, CustomAction>>(),
         /* mapping between key names (must be a name in xmodmap -pke) and window manager specific actions */
         wm_actions: vec![
-            ("space".to_string(), Actions::SwitchWindow),
-            ("w".to_string(), Actions::CloseWindow),
-            ("f".to_string(), Actions::ChangeLayout),
-            ("g".to_owned(), Actions::ToggleGap),
+            (Keybind::new("space", meta), Actions::SwitchWindow),
+            (Keybind::new("w", meta), Actions::CloseWindow),
+            (Keybind::new("f", meta), Actions::ChangeLayout),
+            (Keybind::new("g", meta), Actions::ToggleGap),
         ]
         .into_iter()
-        .collect::<HashMap<Key, Actions>>(),
+        .collect::<HashMap<Keybind, Actions>>(),
         /* won't tile windows with this WM_CLASS */
         ignore_classes: vec!["xscreensaver", "Discover-overlay"]
             .into_iter()
