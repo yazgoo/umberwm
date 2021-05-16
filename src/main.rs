@@ -94,6 +94,10 @@ fn main() {
             (Keybind::new(meta, "w"), Actions::CloseWindow),
             (Keybind::new(meta, "f"), Actions::ChangeLayout),
             (Keybind::new(meta, "g"), Actions::ToggleGap),
+            (
+                Keybind::new(meta | MOD_MASK_SHIFT, "r"),
+                Actions::SerializeAndQuit,
+            ),
         ]
         .into_iter()
         .collect::<HashMap<Keybind, Actions>>(),
