@@ -491,7 +491,7 @@ impl UmberWm {
             screen.root(),
             &[(
                 xcb::CW_EVENT_MASK,
-                xcb::EVENT_MASK_SUBSTRUCTURE_NOTIFY as u32,
+                (xcb::EVENT_MASK_SUBSTRUCTURE_NOTIFY | xcb::EVENT_MASK_PROPERTY_CHANGE) as u32,
             )],
         );
         self.conn.flush();
@@ -744,6 +744,17 @@ impl UmberWm {
     }
 
     fn setup_new_window(&mut self, window: u32) -> Result<()> {
+        xcb::change_window_attributes(
+            &self.conn,
+            window,
+            &[(
+                xcb::CW_EVENT_MASK,
+                xcb::EVENT_MASK_ENTER_WINDOW
+                    | xcb::EVENT_MASK_LEAVE_WINDOW
+                    | xcb::EVENT_MASK_PROPERTY_CHANGE,
+            )],
+        );
+        println!("UGUU0: window: {}", window);
         for workspace in self.workspaces.values() {
             for workspace_window in &workspace.windows {
                 if &window == workspace_window {
@@ -774,12 +785,12 @@ impl UmberWm {
         );
         let wm_class: Vec<&str> = wm_class.split('\0').collect();
         println!(
-            "UGUU: {} {} {}",
+            "UGUU: window: {} window_type: {} wm_class: {}",
             window,
             xcb::get_atom_name(&self.conn, window_type)
                 .get_reply()?
                 .name(),
-            wm_class.join("-")
+            wm_class.join("-"),
         );
         if window_types.contains(&window_type)
             || "_KDE_NET_WM_WINDOW_TYPE_OVERRIDE"
@@ -818,14 +829,7 @@ impl UmberWm {
                 }
             }
         }
-        xcb::change_window_attributes(
-            &self.conn,
-            window,
-            &[(
-                xcb::CW_EVENT_MASK,
-                xcb::EVENT_MASK_ENTER_WINDOW | xcb::EVENT_MASK_LEAVE_WINDOW,
-            )],
-        );
+        println!("UGUU change_window_attributes(window: {})", window);
         Ok(())
     }
 
@@ -919,6 +923,38 @@ impl UmberWm {
                 if r == xcb::MAP_NOTIFY as u8 {
                     let map_notify: &xcb::MapNotifyEvent = unsafe { xcb::cast_event(&event) };
                     self.setup_new_window(map_notify.window()).log();
+                }
+                if r == xcb::PROPERTY_NOTIFY as u8 {
+                    let property_notify: &xcb::PropertyNotifyEvent =
+                        unsafe { xcb::cast_event(&event) };
+                    println!(
+                        "property_notify: {:x} {}",
+                        property_notify.window(),
+                        property_notify.atom()
+                    );
+                    let cookie = xcb::get_property(
+                        &self.conn,
+                        false,
+                        property_notify.window(),
+                        property_notify.atom(),
+                        xcb::ATOM_ANY,
+                        0,
+                        1024,
+                    );
+                    if let Ok(reply) = cookie.get_reply() {
+                        if let Ok(res) = std::str::from_utf8(reply.value()) {
+                            let na = xcb::get_atom_name(&self.conn, property_notify.atom())
+                                .get_reply()
+                                .unwrap();
+                            let name = na.name();
+                            println!(
+                                "PROPERTY_NOTIFY window: {:x} name: {} value(str): {}",
+                                property_notify.window(),
+                                name,
+                                res
+                            );
+                        }
+                    }
                 }
                 if r == self.randr_base + randr::NOTIFY {
                     self.displays_geometries = self.get_displays_geometries().unwrap();
