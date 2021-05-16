@@ -37,17 +37,17 @@ Ubuntu: `sudo apt install libxcb-randr0-dev`.
 3. Edit `src/main.rs`.
 4. Edit `umberwm-start` if desired. Here you can launch any programs you need to before launching
    `umberwm`.
-5. Run `cargo build --release`. The binary will be available in `target/release/umerwm`.
-6. Run `./install.py`. This will do three things:
+5. Run `cargo build --release`. The binary will be available in `target/release/umberwm`.
+6. Optionally, run `./install.py`. This will do three things:
     1. Symlink `target/release/umberwm` to `/usr/bin`.
     2. Symlink `umberwm-start` to `/usr/bin`.
     3. Copy `umberwm.desktop` to `/usr/share/xsessions`. This will allow display managers such as
        `GDM` to find `umberwm` and allow you to launch it.
 7. If you do not use a display manager, you will need to add the following to your `.xinitrc`:
 
-```sh
-exec umberwm-start
-```
+    ```sh
+    exec umberwm-start
+    ```
 
 ## Using it as a dependency
 
