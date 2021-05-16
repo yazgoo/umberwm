@@ -125,7 +125,7 @@ pub struct SerializableState {
     current_workspace: WorkspaceName,
 }
 
-pub struct UmberWM {
+pub struct UmberWm {
     conf: Conf,
     current_workspace: WorkspaceName,
     float_windows: Vec<Window>,
@@ -268,7 +268,7 @@ fn window_types_from_list(conn: &xcb::Connection, types_names: &[String]) -> Vec
         .collect()
 }
 
-impl UmberWM {
+impl UmberWm {
     pub fn get_displays_geometries(&mut self) -> Result<Vec<Geometry>, Box<dyn Error>> {
         let conn = &self.conn;
         let setup = self.conn.get_setup();
@@ -965,11 +965,11 @@ fn load_serializable_state(conf: &Conf) -> Result<SerializableState, Box<dyn Err
     }
 }
 
-pub fn umberwm(conf: Conf) -> UmberWM {
+pub fn umberwm(conf: Conf) -> UmberWm {
     let (conn, _) = xcb::Connection::connect(None).unwrap();
     let serializable_state = load_serializable_state(&conf).unwrap();
     let xmodmap_pke = xmodmap_pke().unwrap();
-    let mut wm = UmberWM {
+    let mut wm = UmberWm {
         conf,
         current_workspace: serializable_state.current_workspace,
         float_windows: serializable_state.float_windows,
