@@ -67,17 +67,13 @@ as a `cargo` dependency.
 umberwm = "0.0.19"
 ```
 
-<<<<<<< HEAD
 You can then supply your own `main.rs` rather than editing the existing one. It is advised that you
 use `main.rs` from this repository as your starting point.
 
-[lbry]: https://open.lbry.com/@goo:c/umberwm:e?r=FKWhS2Vay3CVr66qMZD98HdsLQ2LN7za
-[yt]: https://youtu.be/5XdFNEq69N0
-[install-rust]: https://doc.rust-lang.org/cargo/getting-started/installation.html
-=======
 ## hot reloading
 
-Hot reloading allows to restart umberwm while keeping its state (i.e. keeping track of windows and their relative workspaces).
+Hot reloading allows to restart umberwm while keeping its state (i.e. keeping track of windows and
+their relative workspaces).
 This is quite useful when you want to update your configuration.
 You can add hot reload in your `.xinitrc` by running umberwm in a loop via:
 
@@ -95,6 +91,11 @@ in your `wm_actions`, add
 ("d".to_string(), Actions::SerializeAndQuit),
 ```
 
-In this example, when pushing 'mod4 + d', umberwm will serialize a state under `.umberwm_state` and exit with return code `123`.
-Then the `xinitrc` code will detect code `123`, causing a restart, umberwm will detect the serialized state, load it at startup and delete it.
->>>>>>> master
+In this example, when pushing 'mod4 + d', umberwm will serialize a state under `.umberwm_state` and
+exit with return code `123`.
+Then the `xinitrc` code will detect code `123`, causing a restart, umberwm will detect the
+serialized state, load it at startup and delete it.
+
+[lbry]: https://open.lbry.com/@goo:c/umberwm:e?r=FKWhS2Vay3CVr66qMZD98HdsLQ2LN7za
+[yt]: https://youtu.be/5XdFNEq69N0
+[install-rust]: https://doc.rust-lang.org/cargo/getting-started/installation.html
