@@ -35,25 +35,19 @@ Ubuntu: `sudo apt install libxcb-randr0-dev`.
     + Note: if you don't want to modify the source code, you can instead add `umberwm` as a
       dependency to your own project. See [using it as a dependency](#using-it-as-a-dependency).
 3. Edit `src/main.rs`.
-4. Run `cargo build --release`. The binary will be available in `target/release/umerwm`.
-5. Configure your system to launch `umberwm`:
-    + If you launch your window managers with `startx`, add the following to your `.xinitrc`:
+4. Edit `umberwm-start` if desired. Here you can launch any programs you need to before launching
+   `umberwm`.
+5. Run `cargo build --release`. The binary will be available in `target/release/umberwm`.
+6. Optionally, run `./install.py`. This will do three things:
+    1. Symlink `target/release/umberwm` to `/usr/bin`.
+    2. Symlink `umberwm-start` to `/usr/bin`.
+    3. Copy `umberwm.desktop` to `/usr/share/xsessions`. This will allow display managers such as
+       `GDM` to find `umberwm` and allow you to launch it.
+7. If you do not use a display manager, you will need to add the following to your `.xinitrc`:
 
-        ```sh
-        exec /path/to/myumberwm mod4
-        ```
-
-    + If you use a display manager (such as `GDM`, `SDDM` or `LightDM`), you will need a file named
-      `umberwm.desktop` in `/usr/share/xsessions`. That file should look like this:
-
-        ```ini
-        [Desktop Entry]
-        Encoding=UTF-8
-        Name=UmberWM
-        Comment=Rusty window manager
-        Exec=/path/to/umberwm
-        Type=XSession
-        ```
+    ```sh
+    exec umberwm-start
+    ```
 
 ## Using it as a dependency
 
@@ -70,31 +64,19 @@ umberwm = "0.0.19"
 You can then supply your own `main.rs` rather than editing the existing one. It is advised that you
 use `main.rs` from this repository as your starting point.
 
-## hot reloading
+Note that you will have to manually set up `umberwm-start` and `umberwm.desktop` if you wish to use
+them.
 
-Hot reloading allows to restart umberwm while keeping its state (i.e. keeping track of windows and
+## Hot reloading
+
+Hot reloading allows to restart `umberwm` while keeping its state (i.e. keeping track of windows and
 their relative workspaces).
 This is quite useful when you want to update your configuration.
-You can add hot reload in your `.xinitrc` by running umberwm in a loop via:
 
-```bash
-while true; do
-  echo starting umberwm...
-  /path/to/umberwm mod4
-  [ $? -ne 123 ] && break
-done
-```
-
-in your `wm_actions`, add
-
-```rust
-("d".to_string(), Actions::SerializeAndQuit),
-```
-
-In this example, when pushing 'mod4 + d', umberwm will serialize a state under `.umberwm_state` and
-exit with return code `123`.
-Then the `xinitrc` code will detect code `123`, causing a restart, umberwm will detect the
-serialized state, load it at startup and delete it.
+In `wm_actions:`, the action `Actions::SerializeAndQuit` will serialize all of its windows and then
+quit with exit code `123`.
+The `umberwm-start` script checks for the exit code `123` and reruns `umberwm`, thereby facilitating
+a smooth restart.
 
 [lbry]: https://open.lbry.com/@goo:c/umberwm:e?r=FKWhS2Vay3CVr66qMZD98HdsLQ2LN7za
 [yt]: https://youtu.be/5XdFNEq69N0
