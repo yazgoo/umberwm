@@ -101,12 +101,6 @@ fn main() {
                         let _ = Command::new("t")
                             .arg("--class")
                             .arg("quickmarks")
-                            .arg("--position")
-                            .arg("0")
-                            .arg("18")
-                            .arg("--dimensions")
-                            .arg("100")
-                            .arg("40")
                             .arg("--config-file")
                             .arg("/home/yazgoo/.config/alacritty/alacritty_white.yml")
                             .arg("-e")
@@ -190,7 +184,7 @@ fn main() {
                 });
             })),
         },
-        with_gap: true,
+        with_gap: false,
     };
     umberwm(conf).run();
 }
