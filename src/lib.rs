@@ -1,11 +1,10 @@
-extern crate regex;
-extern crate xcb;
+mod error;
 
+use error::{Error, LogError, Result};
 use miniserde::{json, Deserialize, Serialize};
 use regex::Regex;
 use std::cmp::max;
 use std::collections::HashMap;
-use std::error::Error;
 use std::fs::remove_file;
 use std::fs::File;
 use std::io::prelude::*;
@@ -16,7 +15,7 @@ use xcb::xproto;
 
 type XmodmapPke = HashMap<u8, Vec<String>>;
 
-fn xmodmap_pke() -> Result<XmodmapPke, Box<dyn Error>> {
+fn xmodmap_pke() -> Result<XmodmapPke> {
     let output = Command::new("xmodmap").arg("-pke").output()?;
     let pattern = Regex::new(r"(\d+) = (.*)")?;
     let lines = String::from_utf8(output.stdout)?
@@ -182,10 +181,10 @@ fn change_workspace(
     next_workspace: WorkspaceName,
     move_window: bool,
     same_display: bool,
-) -> Result<WorkspaceName, Box<dyn Error>> {
+) -> Result<WorkspaceName> {
     let workspace = workspaces
         .get_mut(&previous_workspace)
-        .ok_or("workspace not found")?;
+        .ok_or(Error::WorkspaceNotFound)?;
     let window_to_move = unmap_workspace_windows(
         conn,
         &mut workspace.windows,
@@ -203,7 +202,7 @@ fn change_workspace(
     };
     let workspace = workspaces
         .get_mut(&next_workspace)
-        .ok_or("workspace not found")?;
+        .ok_or(Error::WorkspaceNotFound)?;
     for window in &workspace.windows {
         xcb::map_window(conn, *window);
     }
@@ -262,14 +261,14 @@ fn window_types_from_list(conn: &xcb::Connection, types_names: &[String]) -> Vec
             let res = xcb::intern_atom(&conn, true, name.as_str())
                 .get_reply()
                 .map(|x| x.atom());
-            res.ok()
+            res.log()
         })
         .flatten()
         .collect()
 }
 
 impl UmberWm {
-    pub fn get_displays_geometries(&mut self) -> Result<Vec<Geometry>, Box<dyn Error>> {
+    pub fn get_displays_geometries(&mut self) -> Result<Vec<Geometry>> {
         let conn = &self.conn;
         let setup = self.conn.get_setup();
         let screen = setup.roots().next().unwrap();
@@ -359,7 +358,7 @@ impl UmberWm {
             Layout::Monocle => self.resize_monocle(workspace, geos, gap),
         }
         for (i, window) in workspace.windows.iter().enumerate() {
-            self.focus_unfocus(window, i == workspace.focus).ok();
+            self.focus_unfocus(window, i == workspace.focus).log();
         }
     }
 
@@ -436,7 +435,7 @@ impl UmberWm {
             randr::NOTIFY_MASK_CRTC_CHANGE as u16,
         )
         .request_check()
-        .ok();
+        .log();
         for mod_mask in &[mod_key, mod_key | xcb::MOD_MASK_SHIFT] {
             for workspace_name_in_display in &self.conf.workspaces_names {
                 for workspace_name in workspace_name_in_display {
@@ -507,18 +506,14 @@ impl UmberWm {
         self.conn.flush();
     }
 
-    fn focus_unfocus(
-        &mut self,
-        window: &xcb::Window,
-        do_focus: bool,
-    ) -> Result<(), Box<dyn Error>> {
+    fn focus_unfocus(&mut self, window: &xcb::Window, do_focus: bool) -> Result<()> {
         let mut border_focus = false;
         if do_focus {
             xcb::set_input_focus(&self.conn, xcb::INPUT_FOCUS_PARENT as u8, *window, 0);
             let workspace = self
                 .workspaces
                 .get_mut(&self.current_workspace)
-                .ok_or("workspace not found")?;
+                .ok_or(Error::WorkspaceNotFound)?;
             if let Some(i) = workspace.windows.iter().position(|x| x == window) {
                 workspace.focus = i;
             }
@@ -528,7 +523,7 @@ impl UmberWm {
                 .get_reply()?
                 .atom();
             let setup = self.conn.get_setup();
-            let root = setup.roots().next().ok_or("roots 0 not found")?.root();
+            let root = setup.roots().next().ok_or(Error::NoScreensFound)?.root();
             let data = vec![*window];
             xproto::change_property(
                 &self.conn,
@@ -555,7 +550,7 @@ impl UmberWm {
         Ok(())
     }
 
-    fn serialize_and_quit(&mut self) -> Result<(), Box<dyn Error>> {
+    fn serialize_and_quit(&mut self) -> Result<()> {
         let mut file = File::create(UMBERWM_STATE)?;
         let string = json::to_string(&SerializableState {
             float_windows: self.float_windows.clone(),
@@ -566,23 +561,23 @@ impl UmberWm {
         std::process::exit(123);
     }
 
-    fn run_wm_action(&mut self, key: &str) -> Result<(), Box<dyn Error>> {
+    fn run_wm_action(&mut self, key: &str) -> Result<()> {
         let workspaces_names_by_display = self.conf.workspaces_names.clone();
         let action = self
             .conf
             .wm_actions
             .get(&key.to_string())
-            .ok_or("action not found")?;
+            .ok_or(Error::ActionNotFound)?;
         let workspace = self
             .workspaces
             .get_mut(&self.current_workspace)
-            .ok_or("workspace not found")?;
+            .ok_or(Error::WorkspaceNotFound)?;
         match action {
             Actions::CloseWindow => {
                 let window = workspace
                     .windows
                     .get(workspace.focus)
-                    .ok_or("window not found")?;
+                    .ok_or(Error::WindowNotFound)?;
                 let wm_delete_window = xcb::intern_atom(&self.conn, false, "WM_DELETE_WINDOW")
                     .get_reply()?
                     .atom();
@@ -601,7 +596,7 @@ impl UmberWm {
                 self.conn.flush();
             }
             Actions::SerializeAndQuit => {
-                self.serialize_and_quit().ok();
+                self.serialize_and_quit().log();
             }
             Actions::SwitchWindow => {
                 if !workspace.windows.is_empty() {
@@ -624,7 +619,7 @@ impl UmberWm {
                 let workspace = self
                     .workspaces
                     .get(&self.current_workspace)
-                    .ok_or("workspace not found")?
+                    .ok_or(Error::WorkspaceNotFound)?
                     .clone();
                 self.resize_workspace_windows(&workspace, display);
             }
@@ -653,7 +648,7 @@ impl UmberWm {
         }
     }
 
-    fn get_atom_property(&mut self, id: u32, name: &str) -> Result<u32, Box<dyn Error>> {
+    fn get_atom_property(&mut self, id: u32, name: &str) -> Result<u32> {
         let window: xproto::Window = id;
         let ident = xcb::intern_atom(&self.conn, true, name).get_reply()?.atom();
         let reply =
@@ -666,7 +661,7 @@ impl UmberWm {
         }
     }
 
-    fn setup_new_window(&mut self, window: u32) -> Result<(), Box<dyn Error>> {
+    fn setup_new_window(&mut self, window: u32) -> Result<()> {
         for workspace in self.workspaces.values() {
             for workspace_window in &workspace.windows {
                 if &window == workspace_window {
@@ -677,7 +672,7 @@ impl UmberWm {
         }
         let wm_class = self
             .get_str_property(window, "WM_CLASS")
-            .ok_or("failed getting wm class")?;
+            .ok_or(Error::FailedToGetWmClass)?;
         let window_type = self.get_atom_property(window, "_NET_WM_WINDOW_TYPE")?;
         let window_types = window_types_from_list(
             &self.conn,
@@ -748,12 +743,15 @@ impl UmberWm {
         Ok(())
     }
 
-    fn resize_window(&mut self, event: &xcb::MotionNotifyEvent) -> Result<(), Box<dyn Error>> {
-        let mouse_move_start = self.mouse_move_start.clone().ok_or("no mouse move start")?;
+    fn resize_window(&mut self, event: &xcb::MotionNotifyEvent) -> Result<()> {
+        let mouse_move_start = self
+            .mouse_move_start
+            .clone()
+            .ok_or(Error::NoMouseMoveStart)?;
         let attr = self
             .button_press_geometry
             .clone()
-            .ok_or("no button press geometry")?;
+            .ok_or(Error::NoButtonPressGeometry)?;
         let xdiff = event.root_x() - mouse_move_start.root_x;
         let ydiff = event.root_y() - mouse_move_start.root_y;
         let x = attr.0 as i32
@@ -834,7 +832,7 @@ impl UmberWm {
                 let r = event.response_type();
                 if r == xcb::MAP_NOTIFY as u8 {
                     let map_notify: &xcb::MapNotifyEvent = unsafe { xcb::cast_event(&event) };
-                    self.setup_new_window(map_notify.window()).ok();
+                    self.setup_new_window(map_notify.window()).log();
                 }
                 if r == self.randr_base + randr::NOTIFY {
                     self.displays_geometries = self.get_displays_geometries().unwrap();
@@ -847,13 +845,13 @@ impl UmberWm {
                     self.handle_button_press(event);
                 } else if r == xcb::MOTION_NOTIFY as u8 {
                     let event: &xcb::MotionNotifyEvent = unsafe { xcb::cast_event(&event) };
-                    self.resize_window(event).ok();
+                    self.resize_window(event).log();
                 } else if r == xcb::LEAVE_NOTIFY as u8 {
                     let event: &xcb::LeaveNotifyEvent = unsafe { xcb::cast_event(&event) };
-                    self.focus_unfocus(&event.event(), false).ok();
+                    self.focus_unfocus(&event.event(), false).log();
                 } else if r == xcb::ENTER_NOTIFY as u8 {
                     let event: &xcb::EnterNotifyEvent = unsafe { xcb::cast_event(&event) };
-                    self.focus_unfocus(&event.event(), true).ok();
+                    self.focus_unfocus(&event.event(), true).log();
                 } else if r == xcb::BUTTON_RELEASE as u8 {
                     self.mouse_move_start = None;
                 } else if r == xcb::KEY_PRESS as u8 {
@@ -921,7 +919,7 @@ impl UmberWm {
                 }
             }
             if self.conf.wm_actions.contains_key(&key.to_string()) {
-                self.run_wm_action(&key).ok();
+                self.run_wm_action(&key).log();
             } else if self.conf.custom_actions.contains_key(&key.to_string()) {
                 if let Some(action) = self.conf.custom_actions.get(&key.to_string()) {
                     action();
@@ -931,12 +929,13 @@ impl UmberWm {
     }
 }
 
-fn load_serializable_state(conf: &Conf) -> Result<SerializableState, Box<dyn Error>> {
+fn load_serializable_state(conf: &Conf) -> Result<SerializableState> {
     if Path::new(UMBERWM_STATE).exists() {
         let mut file = File::open(UMBERWM_STATE)?;
         let mut contents = String::new();
         file.read_to_string(&mut contents)?;
-        let res: SerializableState = json::from_str(contents.as_str())?;
+        let res: SerializableState = json::from_str(contents.as_str())
+            .map_err(|_| Error::FailedToDeserializeFromJson(contents.to_owned()))?;
         remove_file(UMBERWM_STATE)?;
         Ok(res)
     } else {
