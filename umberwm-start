@@ -1,0 +1,9 @@
+#!/bin/bash
+
+# Custom actions go here
+
+while true; do
+  umberwm
+  # If umberwm returns exit code 123, restart, otherwise quit.
+  [ $? -ne 123 ] && break
+done
