@@ -2,7 +2,7 @@
 
 # Custom actions go here
 
-mkdir -p $HOME/.local/share/umberwm
+mkdir -p "$HOME"/.local/share/umberwm
 
 while true; do
   umberwm &>> $HOME/.local/share/umberwm/umberwm.log
