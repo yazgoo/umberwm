@@ -2,8 +2,10 @@
 
 # Custom actions go here
 
+mkdir -p "$HOME"/.local/share/umberwm
+
 while true; do
-  umberwm
+  umberwm &>> "$HOME"/.local/share/umberwm/umberwm.log 2>&1
   # If umberwm returns exit code 123, restart, otherwise quit.
   [ $? -ne 123 ] && break
 done
