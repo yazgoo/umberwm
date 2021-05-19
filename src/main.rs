@@ -1,6 +1,5 @@
 extern crate umberwm;
 
-use std::collections::HashMap;
 use std::env;
 use std::path;
 use std::process::Command;
@@ -87,7 +86,7 @@ fn main() {
             ),
         ]
         .into_iter()
-        .collect::<HashMap<Keybind, CustomAction>>(),
+        .collect(),
         /* mapping between key names (must be a name in xmodmap -pke) and window manager specific actions */
         wm_actions: vec![
             (Keybind::new(meta, "space"), Actions::SwitchWindow),
@@ -100,7 +99,7 @@ fn main() {
             ),
         ]
         .into_iter()
-        .collect::<HashMap<Keybind, Actions>>(),
+        .collect(),
         /* won't tile windows with this WM_CLASS */
         ignore_classes: vec!["xscreensaver", "Discover-overlay"]
             .into_iter()
