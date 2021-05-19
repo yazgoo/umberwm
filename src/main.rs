@@ -1,5 +1,3 @@
-extern crate umberwm;
-
 use std::env;
 use std::path;
 use std::process::Command;
