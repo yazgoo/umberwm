@@ -156,7 +156,7 @@ fn main() {
                 });
             })),
         },
-        with_gap: true,
+        with_gap: false,
     };
     umberwm(conf).run();
 }
