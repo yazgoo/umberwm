@@ -4,7 +4,7 @@ use std::process::Command;
 use std::thread;
 use umberwm::{
     umberwm, Actions, Conf, CustomAction, DisplayBorder, EventsCallbacks, Keybind, WindowBorder,
-    MOD_MASK_1, MOD_MASK_4, MOD_MASK_SHIFT,
+    MOD_MASK_1, MOD_MASK_4, MOD_MASK_CONTROL, MOD_MASK_SHIFT,
 };
 
 fn main() {
@@ -80,7 +80,7 @@ fn main() {
                 }),
             ),
             (
-                Keybind::new(meta | MOD_MASK_SHIFT, "q"),
+                Keybind::new(meta | MOD_MASK_CONTROL, "q"),
                 Box::new(|| std::process::exit(0)),
             ),
         ]
@@ -94,7 +94,7 @@ fn main() {
             (Keybind::new(meta, "f"), Actions::ChangeLayout),
             (Keybind::new(meta, "g"), Actions::ToggleGap),
             (
-                Keybind::new(meta | MOD_MASK_SHIFT, "r"),
+                Keybind::new(meta | MOD_MASK_CONTROL, "r"),
                 Actions::SerializeAndQuit,
             ),
         ]
