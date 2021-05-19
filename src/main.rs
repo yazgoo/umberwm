@@ -17,16 +17,16 @@ fn main() {
     };
 
     let conf = Conf {
-        /* the main key used to detect WM events */
+        // The main key used to detect WM events
         meta,
-        /* borders defining space the WM wont tile windows to (usefull when using task bars) */
+        // Borders defining space the WM wont tile windows to (usefull when using task bars)
         display_borders: vec![
             DisplayBorder {
                 left: 0,
                 right: 0,
                 top: 20,
                 bottom: 0,
-                /* gap between windows */
+                // Gap between windows
                 gap: 10,
             },
             DisplayBorder {
@@ -42,7 +42,7 @@ fn main() {
             focus_color: 0x906cff,
             normal_color: 0x000000,
         },
-        /* key names of the workspaces (must be a name in xmodmap -pke), per displays */
+        // Key names of the workspaces (must be a name in xmodmap -pke), per displays
         workspaces_names: vec![
             vec!["a".to_string(), "u".to_string(), "i".to_string()],
             vec![
@@ -52,7 +52,7 @@ fn main() {
                 "p".to_string(),
             ],
         ],
-        /* mapping between key names (must be a name in xmodmap -pke) and user-defined actions */
+        // Mapping between key names (must be a name in xmodmap -pke) and user-defined actions
         custom_actions: vec![
             (
                 Keybind::new(meta, "r"),
@@ -66,8 +66,9 @@ fn main() {
                 Keybind::new(meta | MOD_MASK_SHIFT, "Return"),
                 Box::new(|| {
                     thread::spawn(move || {
+                        // Launch a terminal
                         let _ = Command::new("bash").arg("t").status();
-                    } /* launch my favorite terminal emulator */);
+                    });
                 }),
             ),
             (
@@ -85,7 +86,8 @@ fn main() {
         ]
         .into_iter()
         .collect(),
-        /* mapping between key names (must be a name in xmodmap -pke) and window manager specific actions */
+        // Mapping between key names (must be a name in xmodmap -pke) and window manager specific
+        // actions
         wm_actions: vec![
             (Keybind::new(meta, "space"), Actions::SwitchWindow),
             (Keybind::new(meta, "w"), Actions::CloseWindow),
@@ -98,7 +100,7 @@ fn main() {
         ]
         .into_iter()
         .collect(),
-        /* won't tile windows with this WM_CLASS */
+        // Won't tile windows with this WM_CLASS
         ignore_classes: vec!["xscreensaver", "Discover-overlay"]
             .into_iter()
             .map(|x| x.to_string())
@@ -132,12 +134,12 @@ fn main() {
         .into_iter()
         .map(|x| x.to_string())
         .collect(),
-        /* those are user custom callbacks */
+        // Those are user custom callbacks
         events_callbacks: EventsCallbacks {
-            /* when we change a workspace */
+            // When we change a workspace
             on_change_workspace: Some(Box::new(|workspace, display| {
                 thread::spawn(move || {
-                    /* set the wallpaper using nitrogen */
+                    // Set the wallpaper using nitrogen
                     let background_path = format!(
                         "{}/Pictures/wallpapers/umberwm_{}.jpg",
                         env::var("HOME").unwrap(),
