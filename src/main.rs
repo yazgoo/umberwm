@@ -17,16 +17,16 @@ fn main() {
     };
 
     let conf = Conf {
-        // The main key used to detect WM events
+        // The mod key that is used to switch between workspaces
         meta,
-        // Borders defining space the WM wont tile windows to (usefull when using task bars)
+        // Borders defining space the WM wont tile windows to (useful when using task bars)
         display_borders: vec![
             DisplayBorder {
                 left: 0,
                 right: 0,
-                top: 20,
+                top: 0,
                 bottom: 0,
-                // Gap between windows
+                // Gap between windows (if `with_gap` is set to `true`)
                 gap: 10,
             },
             DisplayBorder {
@@ -34,7 +34,7 @@ fn main() {
                 right: 0,
                 top: 0,
                 bottom: 0,
-                gap: 0,
+                gap: 10,
             },
         ],
         border: WindowBorder {
@@ -42,22 +42,24 @@ fn main() {
             focus_color: 0x906cff,
             normal_color: 0x000000,
         },
-        // Key names of the workspaces (must be a name in xmodmap -pke), per displays
+        // Key names of the workspaces (must be a name in `xmodmap -pke`)
+        // Each Vec defines the workspaces for a single display. You should have as many Vecs as
+        // you have displays.
         workspaces_names: vec![
-            vec!["a".to_string(), "u".to_string(), "i".to_string()],
-            vec![
-                "b".to_string(),
-                "eacute".to_string(),
-                "o".to_string(),
-                "p".to_string(),
-            ],
+            // Map workspaces 1-5 to display 1
+            (1..=5).map(|i| i.to_string()).collect(),
+            // Map workspaces 6-9 to display 2
+            (6..=9).map(|i| i.to_string()).collect(),
         ],
-        // Mapping between key names (must be a name in xmodmap -pke) and user-defined actions
+        // The keys for keybindings must be named as they are named in `xmodmap -pke`.
+
+        // User defined actions
         custom_actions: vec![
             (
                 Keybind::new(meta, "r"),
                 Box::new(|| {
                     thread::spawn(move || {
+                        // Launch rofi
                         let _ = Command::new("rofi").arg("-show").arg("run").status();
                     });
                 }) as CustomAction,
@@ -66,34 +68,36 @@ fn main() {
                 Keybind::new(meta | MOD_MASK_SHIFT, "Return"),
                 Box::new(|| {
                     thread::spawn(move || {
-                        // Launch a terminal
-                        let _ = Command::new("bash").arg("t").status();
+                        // Launch a terminal (alacritty)
+                        let _ = Command::new("alacritty").status();
                     });
                 }),
             ),
             (
-                Keybind::new(meta, "l"),
+                Keybind::new(meta | MOD_MASK_CONTROL, "l"),
                 Box::new(|| {
                     thread::spawn(move || {
+                        // Lock the screen (requires lxlock)
                         let _ = Command::new("lxlock");
                     });
                 }),
             ),
             (
                 Keybind::new(meta | MOD_MASK_CONTROL, "q"),
+                // Quit UmberWM
                 Box::new(|| std::process::exit(0)),
             ),
         ]
         .into_iter()
         .collect(),
-        // Mapping between key names (must be a name in xmodmap -pke) and window manager specific
-        // actions
         wm_actions: vec![
+            // Window manager actions
             (Keybind::new(meta, "space"), Actions::SwitchWindow),
             (Keybind::new(meta, "w"), Actions::CloseWindow),
             (Keybind::new(meta, "f"), Actions::ChangeLayout),
             (Keybind::new(meta, "g"), Actions::ToggleGap),
             (
+                // Restart UmberWM (if configured to do so - see README.md for details)
                 Keybind::new(meta | MOD_MASK_CONTROL, "r"),
                 Actions::SerializeAndQuit,
             ),
@@ -134,10 +138,11 @@ fn main() {
         .into_iter()
         .map(|x| x.to_string())
         .collect(),
-        // Those are user custom callbacks
         events_callbacks: EventsCallbacks {
-            // When we change a workspace
+            // Custom callback will be called when we change a workspace.
             on_change_workspace: Some(Box::new(|workspace, display| {
+                // This defines a custom wallpaper for each workspace. They must be located in
+                // `~/Pictures/wallpapers` and be named `umberwm_<workspace_name>.jpg`.
                 thread::spawn(move || {
                     // Set the wallpaper using nitrogen
                     let background_path = format!(
@@ -155,6 +160,8 @@ fn main() {
                 });
             })),
         },
+
+        // Defines if there are gaps between windows (assuming `gap` is not 0 in `display_borders`)
         with_gap: false,
     };
     umberwm(conf).run();
