@@ -12,23 +12,30 @@ use std::path::Path;
 use std::process::Command;
 use xcb::randr;
 use xcb::xproto;
+use xcb::ModMask;
+pub use xcb::{
+    MOD_MASK_1, MOD_MASK_2, MOD_MASK_3, MOD_MASK_4, MOD_MASK_5, MOD_MASK_CONTROL, MOD_MASK_SHIFT,
+};
 
 type XmodmapPke = HashMap<u8, Vec<String>>;
 
-fn xmodmap_pke() -> Result<XmodmapPke> {
-    let output = Command::new("xmodmap").arg("-pke").output()?;
-    let pattern = Regex::new(r"(\d+) = (.*)")?;
-    let lines = String::from_utf8(output.stdout)?
-        .lines()
-        .filter_map(|line| pattern.captures(line))
-        .map(|cap| {
-            (
-                cap[1].parse().unwrap(),
-                cap[2].split(' ').map(|s| s.to_string()).collect(),
-            )
-        })
-        .collect::<HashMap<u8, Vec<String>>>();
-    Ok(lines)
+#[derive(Eq, PartialEq, Hash)]
+pub struct Keybind {
+    pub mod_mask: ModMask,
+    pub key: String,
+}
+
+impl Keybind {
+    pub fn new<M, K>(mod_mask: M, key: K) -> Self
+    where
+        M: Into<ModMask>,
+        K: Into<String>,
+    {
+        Keybind {
+            mod_mask: mod_mask.into(),
+            key: key.into(),
+        }
+    }
 }
 
 pub enum Actions {
@@ -95,12 +102,12 @@ pub struct EventsCallbacks {
 }
 
 pub struct Conf {
-    pub meta: Meta,
+    pub meta: ModMask,
     pub border: WindowBorder,
     pub display_borders: Vec<DisplayBorder>,
     pub workspaces_names: Vec<Vec<WorkspaceName>>,
-    pub custom_actions: HashMap<Key, CustomAction>,
-    pub wm_actions: HashMap<Key, Actions>,
+    pub custom_actions: HashMap<Keybind, CustomAction>,
+    pub wm_actions: HashMap<Keybind, Actions>,
     pub ignore_classes: Vec<String>,
     pub float_classes: Vec<String>,
     pub events_callbacks: EventsCallbacks,
@@ -136,6 +143,22 @@ pub struct UmberWm {
     displays_geometries: Vec<Geometry>,
     randr_base: u8,
     previous_display: DisplayId,
+}
+
+fn xmodmap_pke() -> Result<XmodmapPke> {
+    let output = Command::new("xmodmap").arg("-pke").output()?;
+    let pattern = Regex::new(r"(\d+) = (.*)")?;
+    let lines = String::from_utf8(output.stdout)?
+        .lines()
+        .filter_map(|line| pattern.captures(line))
+        .map(|cap| {
+            (
+                cap[1].parse().unwrap(),
+                cap[2].split(' ').map(|s| s.to_string()).collect(),
+            )
+        })
+        .collect::<HashMap<u8, Vec<String>>>();
+    Ok(lines)
 }
 
 fn keycode_to_key(xmodmap_pke: &XmodmapPke, keycode: u8) -> Option<Key> {
@@ -420,10 +443,6 @@ impl UmberWm {
     fn init(&mut self) {
         self.displays_geometries = self.get_displays_geometries().unwrap();
         let screen = self.conn.get_setup().roots().next().unwrap();
-        let mod_key = match self.conf.meta {
-            Meta::Mod4 => xcb::MOD_MASK_4,
-            Meta::Mod1 => xcb::MOD_MASK_1,
-        };
         self.randr_base = self
             .conn
             .get_extension_data(&mut randr::id())
@@ -436,7 +455,70 @@ impl UmberWm {
         )
         .request_check()
         .log();
-        for mod_mask in &[mod_key, mod_key | xcb::MOD_MASK_SHIFT] {
+        self.grab_custom_action_keys(&screen);
+        self.grab_wm_action_keys(&screen);
+        self.grab_workspace_keys(&screen);
+        for button in &[1_u8, 3_u8] {
+            xcb::grab_button(
+                &self.conn,
+                false,
+                screen.root(),
+                (xcb::EVENT_MASK_BUTTON_PRESS
+                    | xcb::EVENT_MASK_BUTTON_RELEASE
+                    | xcb::EVENT_MASK_POINTER_MOTION) as u16,
+                xcb::GRAB_MODE_ASYNC as u8,
+                xcb::GRAB_MODE_ASYNC as u8,
+                xcb::NONE,
+                xcb::NONE,
+                *button,
+                self.conf.meta as u16,
+            );
+        }
+        xcb::change_window_attributes(
+            &self.conn,
+            screen.root(),
+            &[(
+                xcb::CW_EVENT_MASK,
+                xcb::EVENT_MASK_SUBSTRUCTURE_NOTIFY as u32,
+            )],
+        );
+        self.conn.flush();
+    }
+
+    fn grab_custom_action_keys(&self, screen: &xcb::Screen) {
+        for keybind in self.conf.custom_actions.keys() {
+            key_to_keycode(&self.xmodmap_pke, &keybind.key).map(|keycode| {
+                xcb::grab_key(
+                    &self.conn,
+                    false,
+                    screen.root(),
+                    keybind.mod_mask as u16,
+                    keycode,
+                    xcb::GRAB_MODE_ASYNC as u8,
+                    xcb::GRAB_MODE_ASYNC as u8,
+                )
+            });
+        }
+    }
+
+    fn grab_wm_action_keys(&self, screen: &xcb::Screen) {
+        for keybind in self.conf.wm_actions.keys() {
+            key_to_keycode(&self.xmodmap_pke, &keybind.key).map(|keycode| {
+                xcb::grab_key(
+                    &self.conn,
+                    false,
+                    screen.root(),
+                    keybind.mod_mask as u16,
+                    keycode,
+                    xcb::GRAB_MODE_ASYNC as u8,
+                    xcb::GRAB_MODE_ASYNC as u8,
+                )
+            });
+        }
+    }
+
+    fn grab_workspace_keys(&self, screen: &xcb::Screen) {
+        for mod_mask in &[self.conf.meta, self.conf.meta | xcb::MOD_MASK_SHIFT] {
             for workspace_name_in_display in &self.conf.workspaces_names {
                 for workspace_name in workspace_name_in_display {
                     key_to_keycode(&self.xmodmap_pke, workspace_name).map(|keycode| {
@@ -452,58 +534,7 @@ impl UmberWm {
                     });
                 }
             }
-            for custom_action_key in self.conf.custom_actions.keys() {
-                key_to_keycode(&self.xmodmap_pke, custom_action_key).map(|keycode| {
-                    xcb::grab_key(
-                        &self.conn,
-                        false,
-                        screen.root(),
-                        *mod_mask as u16,
-                        keycode,
-                        xcb::GRAB_MODE_ASYNC as u8,
-                        xcb::GRAB_MODE_ASYNC as u8,
-                    )
-                });
-            }
-            for custom_action_key in self.conf.wm_actions.keys() {
-                key_to_keycode(&self.xmodmap_pke, custom_action_key).map(|keycode| {
-                    xcb::grab_key(
-                        &self.conn,
-                        false,
-                        screen.root(),
-                        *mod_mask as u16,
-                        keycode,
-                        xcb::GRAB_MODE_ASYNC as u8,
-                        xcb::GRAB_MODE_ASYNC as u8,
-                    )
-                });
-            }
         }
-        for button in &[1_u8, 3_u8] {
-            xcb::grab_button(
-                &self.conn,
-                false,
-                screen.root(),
-                (xcb::EVENT_MASK_BUTTON_PRESS
-                    | xcb::EVENT_MASK_BUTTON_RELEASE
-                    | xcb::EVENT_MASK_POINTER_MOTION) as u16,
-                xcb::GRAB_MODE_ASYNC as u8,
-                xcb::GRAB_MODE_ASYNC as u8,
-                xcb::NONE,
-                xcb::NONE,
-                *button,
-                mod_key as u16,
-            );
-        }
-        xcb::change_window_attributes(
-            &self.conn,
-            screen.root(),
-            &[(
-                xcb::CW_EVENT_MASK,
-                xcb::EVENT_MASK_SUBSTRUCTURE_NOTIFY as u32,
-            )],
-        );
-        self.conn.flush();
     }
 
     fn focus_unfocus(&mut self, window: &xcb::Window, do_focus: bool) -> Result<()> {
@@ -561,12 +592,12 @@ impl UmberWm {
         std::process::exit(123);
     }
 
-    fn run_wm_action(&mut self, key: &str) -> Result<()> {
+    fn run_wm_action(&mut self, keybind: &Keybind) -> Result<()> {
         let workspaces_names_by_display = self.conf.workspaces_names.clone();
         let action = self
             .conf
             .wm_actions
-            .get(&key.to_string())
+            .get(keybind)
             .ok_or(Error::ActionNotFound)?;
         let workspace = self
             .workspaces
@@ -882,47 +913,55 @@ impl UmberWm {
 
     fn handle_key_press(&mut self, event: &xcb::KeyPressEvent) {
         let keycode = event.detail();
+        let mod_mask = event.state();
         if let Some(key) = &keycode_to_key(&self.xmodmap_pke, keycode) {
-            let workspaces_names_by_display = self.conf.workspaces_names.clone();
-            for (display, workspaces_names) in workspaces_names_by_display.iter().enumerate() {
-                if workspaces_names.contains(key) {
-                    if let Ok(workspace) = change_workspace(
-                        &self.conn,
-                        &mut self.workspaces,
-                        self.current_workspace.to_string(),
-                        key.to_string(),
-                        (event.state() as u32) & xcb::MOD_MASK_SHIFT != 0,
-                        workspaces_names.contains(&self.current_workspace)
-                            || display >= self.displays_geometries.len()
-                            || self.previous_display >= self.displays_geometries.len(),
-                    ) {
-                        self.previous_display = display;
-                        self.current_workspace = workspace;
-                        let workspace = self
-                            .workspaces
-                            .get(&self.current_workspace)
-                            .ok_or("workspace not found")
-                            .unwrap()
-                            .clone();
-                        self.resize_workspace_windows(&workspace, display);
-                        let actual_display = if display >= self.displays_geometries.len() {
-                            self.displays_geometries.len() - 1
-                        } else {
-                            display
-                        };
-                        if let Some(callback) =
-                            self.conf.events_callbacks.on_change_workspace.as_ref()
-                        {
-                            callback(key.to_string(), actual_display)
-                        }
-                    }
+            let keybind = Keybind::new(mod_mask, key);
+
+            self.handle_workspace_change(&keybind);
+
+            if self.conf.wm_actions.contains_key(&keybind) {
+                self.run_wm_action(&keybind).log();
+            } else if self.conf.custom_actions.contains_key(&keybind) {
+                if let Some(action) = self.conf.custom_actions.get(&keybind) {
+                    action();
                 }
             }
-            if self.conf.wm_actions.contains_key(&key.to_string()) {
-                self.run_wm_action(&key).log();
-            } else if self.conf.custom_actions.contains_key(&key.to_string()) {
-                if let Some(action) = self.conf.custom_actions.get(&key.to_string()) {
-                    action();
+        }
+    }
+
+    fn handle_workspace_change(&mut self, keybind: &Keybind) {
+        let workspaces_names_by_display = self.conf.workspaces_names.clone();
+        for (display, workspaces_names) in workspaces_names_by_display.iter().enumerate() {
+            if workspaces_names.contains(&keybind.key) {
+                if let Ok(workspace) = change_workspace(
+                    &self.conn,
+                    &mut self.workspaces,
+                    self.current_workspace.to_string(),
+                    keybind.key.clone(),
+                    keybind.mod_mask & xcb::MOD_MASK_SHIFT != 0,
+                    workspaces_names.contains(&self.current_workspace)
+                        || display >= self.displays_geometries.len()
+                        || self.previous_display >= self.displays_geometries.len(),
+                ) {
+                    self.previous_display = display;
+                    self.current_workspace = workspace;
+                    let workspace = self
+                        .workspaces
+                        .get(&self.current_workspace)
+                        .ok_or(Error::WorkspaceNotFound)
+                        .log()
+                        .unwrap()
+                        .clone();
+                    self.resize_workspace_windows(&workspace, display);
+                    let actual_display = if display >= self.displays_geometries.len() {
+                        self.displays_geometries.len() - 1
+                    } else {
+                        display
+                    };
+                    if let Some(callback) = self.conf.events_callbacks.on_change_workspace.as_ref()
+                    {
+                        callback(keybind.key.clone(), actual_display)
+                    }
                 }
             }
         }

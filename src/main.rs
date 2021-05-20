@@ -1,32 +1,32 @@
-extern crate umberwm;
-
-use std::collections::HashMap;
 use std::env;
 use std::path;
 use std::process::Command;
 use std::thread;
 use umberwm::{
-    umberwm, Actions, Conf, CustomAction, DisplayBorder, EventsCallbacks, Key, Meta, WindowBorder,
+    umberwm, Actions, Conf, CustomAction, DisplayBorder, EventsCallbacks, Keybind, WindowBorder,
+    MOD_MASK_1, MOD_MASK_4, MOD_MASK_CONTROL, MOD_MASK_SHIFT,
 };
 
 fn main() {
     let args: Vec<String> = env::args().collect();
 
+    let meta = if args.len() > 1 && args[1] == "mod4" {
+        MOD_MASK_4
+    } else {
+        MOD_MASK_1
+    };
+
     let conf = Conf {
-        /* the main key used to detect WM events */
-        meta: if args.len() > 1 && args[1] == "mod4" {
-            Meta::Mod4
-        } else {
-            Meta::Mod1
-        },
-        /* borders defining space the WM wont tile windows to (usefull when using task bars) */
+        // The mod key that is used to switch between workspaces
+        meta,
+        // Borders defining space the WM wont tile windows to (useful when using task bars)
         display_borders: vec![
             DisplayBorder {
                 left: 0,
                 right: 0,
-                top: 20,
+                top: 0,
                 bottom: 0,
-                /* gap between windows */
+                // Gap between windows (if `with_gap` is set to `true`)
                 gap: 10,
             },
             DisplayBorder {
@@ -34,7 +34,7 @@ fn main() {
                 right: 0,
                 top: 0,
                 bottom: 0,
-                gap: 0,
+                gap: 10,
             },
         ],
         border: WindowBorder {
@@ -42,94 +42,69 @@ fn main() {
             focus_color: 0x906cff,
             normal_color: 0x000000,
         },
-        /* key names of the workspaces (must be a name in xmodmap -pke), per displays */
+        // Key names of the workspaces (must be a name in `xmodmap -pke`)
+        // Each Vec defines the workspaces for a single display. You should have as many Vecs as
+        // you have displays.
         workspaces_names: vec![
-            vec!["a".to_string(), "u".to_string(), "i".to_string()],
-            vec![
-                "b".to_string(),
-                "eacute".to_string(),
-                "o".to_string(),
-                "p".to_string(),
-            ],
+            // Map workspaces 1-5 to display 1
+            (1..=5).map(|i| i.to_string()).collect(),
+            // Map workspaces 6-9 to display 2
+            (6..=9).map(|i| i.to_string()).collect(),
         ],
-        /* mapping between key names (must be a name in xmodmap -pke) and user-defined actions */
+        // The keys for keybindings must be named as they are named in `xmodmap -pke`.
+
+        // User defined actions
         custom_actions: vec![
             (
-                "r".to_string(),
+                Keybind::new(meta, "r"),
                 Box::new(|| {
                     thread::spawn(move || {
+                        // Launch rofi
                         let _ = Command::new("rofi").arg("-show").arg("run").status();
                     });
                 }) as CustomAction,
             ),
             (
-                "Return".to_string(),
+                Keybind::new(meta | MOD_MASK_SHIFT, "Return"),
                 Box::new(|| {
                     thread::spawn(move || {
-                        let _ = Command::new("bash").arg("t").status();
-                    } /* launch my favorite terminal emulator */);
+                        // Launch a terminal (alacritty)
+                        let _ = Command::new("alacritty").status();
+                    });
                 }),
             ),
             (
-                "s".to_string(),
+                Keybind::new(meta | MOD_MASK_CONTROL, "l"),
                 Box::new(|| {
                     thread::spawn(move || {
-                        let _ = Command::new("bash").arg("alsaterm").status();
-                    } /* launch alsamixer in a terminal */);
-                }),
-            ),
-            (
-                "l".to_string(),
-                Box::new(|| {
-                    thread::spawn(move || {
+                        // Lock the screen (requires lxlock)
                         let _ = Command::new("lxlock");
                     });
                 }),
             ),
             (
-                "n".to_string(),
-                Box::new(|| {
-                    thread::spawn(move || {
-                        let _ = Command::new("xcalib").arg("-i").arg("-a").status();
-                    });
-                }),
+                Keybind::new(meta | MOD_MASK_CONTROL, "q"),
+                // Quit UmberWM
+                Box::new(|| std::process::exit(0)),
             ),
-            (
-                "x".to_string(),
-                Box::new(|| {
-                    thread::spawn(move || {
-                        let _ = Command::new("t")
-                            .arg("--class")
-                            .arg("quickmarks")
-                            .arg("--config-file")
-                            .arg("/home/yazgoo/.config/alacritty/alacritty_white.yml")
-                            .arg("-e")
-                            .arg("quickmarks")
-                            .status();
-                    });
-                }),
-            ),
-            (
-                "m".to_string(),
-                Box::new(|| {
-                    let _ = Command::new("autorandr").arg("--change").status();
-                }),
-            ),
-            ("q".to_string(), Box::new(|| std::process::exit(0))),
         ]
         .into_iter()
-        .collect::<HashMap<Key, CustomAction>>(),
-        /* mapping between key names (must be a name in xmodmap -pke) and window manager specific actions */
+        .collect(),
         wm_actions: vec![
-            ("space".to_string(), Actions::SwitchWindow),
-            ("w".to_string(), Actions::CloseWindow),
-            ("f".to_string(), Actions::ChangeLayout),
-            ("d".to_string(), Actions::SerializeAndQuit),
-            ("g".to_owned(), Actions::ToggleGap),
+            // Window manager actions
+            (Keybind::new(meta, "space"), Actions::SwitchWindow),
+            (Keybind::new(meta, "w"), Actions::CloseWindow),
+            (Keybind::new(meta, "f"), Actions::ChangeLayout),
+            (Keybind::new(meta, "g"), Actions::ToggleGap),
+            (
+                // Restart UmberWM (if configured to do so - see README.md for details)
+                Keybind::new(meta | MOD_MASK_CONTROL, "r"),
+                Actions::SerializeAndQuit,
+            ),
         ]
         .into_iter()
-        .collect::<HashMap<Key, Actions>>(),
-        /* won't tile windows with this WM_CLASS */
+        .collect(),
+        // Won't tile windows with this WM_CLASS
         ignore_classes: vec!["xscreensaver", "Discover-overlay"]
             .into_iter()
             .map(|x| x.to_string())
@@ -163,12 +138,13 @@ fn main() {
         .into_iter()
         .map(|x| x.to_string())
         .collect(),
-        /* those are user custom callbacks */
         events_callbacks: EventsCallbacks {
-            /* when we change a workspace */
+            // Custom callback will be called when we change a workspace.
             on_change_workspace: Some(Box::new(|workspace, display| {
+                // This defines a custom wallpaper for each workspace. They must be located in
+                // `~/Pictures/wallpapers` and be named `umberwm_<workspace_name>.jpg`.
                 thread::spawn(move || {
-                    /* set the wallpaper using nitrogen */
+                    // Set the wallpaper using nitrogen
                     let background_path = format!(
                         "{}/Pictures/wallpapers/umberwm_{}.jpg",
                         env::var("HOME").unwrap(),
@@ -184,6 +160,8 @@ fn main() {
                 });
             })),
         },
+
+        // Defines if there are gaps between windows (assuming `gap` is not 0 in `display_borders`)
         with_gap: false,
     };
     umberwm(conf).run();
