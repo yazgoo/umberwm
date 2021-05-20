@@ -58,11 +58,13 @@ as a `cargo` dependency.
 ```toml
 # ...
 [dependencies]
-umberwm = "0.0.19"
+umberwm = "0.0.21"
 ```
 
 You can then supply your own `main.rs` rather than editing the existing one. It is advised that you
 use `main.rs` from this repository as your starting point.
+
+See [yazgoo/myumberwm](https://github.com/yazgoo/myumberwm) for an example.
 
 Note that you will have to manually set up `umberwm-start` and `umberwm.desktop` if you wish to use
 them.
