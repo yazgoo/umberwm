@@ -64,7 +64,9 @@ umberwm = "0.0.21"
 You can then supply your own `main.rs` rather than editing the existing one. It is advised that you
 use `main.rs` from this repository as your starting point.
 
-See [yazgoo/myumberwm](https://github.com/yazgoo/myumberwm) for an example.
+See examples:
++ [yazgoo/myumberwm]
++ [mfdorst/cucumberwm]
 
 Note that you will have to manually set up `umberwm-start` and `umberwm.desktop` if you wish to use
 them.
@@ -83,3 +85,5 @@ a smooth restart.
 [lbry]: https://open.lbry.com/@goo:c/umberwm:e?r=FKWhS2Vay3CVr66qMZD98HdsLQ2LN7za
 [yt]: https://youtu.be/5XdFNEq69N0
 [install-rust]: https://doc.rust-lang.org/cargo/getting-started/installation.html
+[yazgoo/myumberwm]: https://github.com/yazgoo/myumberwm
+[mfdorst/cucumberwm]: https://github.com/mfdorst/cucumberwm
