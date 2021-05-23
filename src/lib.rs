@@ -25,6 +25,18 @@ pub struct Keybind {
     pub key: String,
 }
 
+#[derive(Debug)]
+struct NormalHints {
+    min_width: u32,
+    min_height: u32,
+    max_width: u32,
+    max_height: u32,
+    width_inc: u32,
+    height_inc: u32,
+    min_aspect: (u32, u32),
+    max_aspect: (u32, u32),
+}
+
 impl Keybind {
     pub fn new<M, K>(mod_mask: M, key: K) -> Self
     where
@@ -692,6 +704,45 @@ impl UmberWm {
         }
     }
 
+    fn get_wm_normal_hints(&mut self, id: u32) -> Result<Option<NormalHints>> {
+        let window: xproto::Window = id;
+        let ident = xcb::intern_atom(&self.conn, true, "WM_NORMAL_HINTS")
+            .get_reply()?
+            .atom();
+        let reply =
+            xproto::get_property(&self.conn, false, window, ident, xproto::ATOM_ANY, 0, 1024)
+                .get_reply()?;
+        if reply.value_len() >= 15 {
+            let value = reply.value();
+            let hints = NormalHints {
+                min_width: value[5],
+                min_height: value[6],
+                max_width: value[7],
+                max_height: value[8],
+                width_inc: value[9],
+                height_inc: value[10],
+                min_aspect: (value[11], value[12]),
+                max_aspect: (value[13], value[14]),
+            };
+            Ok(Some(hints))
+        } else {
+            Ok(None)
+        }
+    }
+
+    fn is_firefox_drag_n_drop_initialization_window(
+        &mut self,
+        id: u32,
+        wm_class: &[&str],
+    ) -> Result<bool> {
+        if wm_class.len() >= 2 && wm_class[0] == "firefox" && wm_class[1] == "firefox" {
+            if let Some(hints) = self.get_wm_normal_hints(id)? {
+                return Ok(hints.max_height == 0 && hints.max_width == 0);
+            }
+        }
+        Ok(false)
+    }
+
     fn setup_new_window(&mut self, window: u32) -> Result<()> {
         for workspace in self.workspaces.values() {
             for workspace_window in &workspace.windows {
@@ -718,6 +769,7 @@ impl UmberWm {
                 "splash".to_string(),
                 "dialog".to_string(),
                 "dock".to_string(),
+                "dnd".to_string(),
             ],
         );
         let wm_class: Vec<&str> = wm_class.split('\0').collect();
@@ -738,6 +790,9 @@ impl UmberWm {
             return Ok(());
         }
         if !wm_class.is_empty() {
+            if self.is_firefox_drag_n_drop_initialization_window(window, &wm_class)? {
+                return Ok(());
+            }
             for item in &wm_class {
                 if item == &"xscreensaver" || self.conf.ignore_classes.contains(&item.to_string()) {
                     return Ok(());
