@@ -132,12 +132,14 @@ fn main() {
             "rofi",
             "xscreensaver",
             "quickmarks",
-            "discover-overlay",
-            "Discover-overlay",
         ]
         .into_iter()
         .map(|x| x.to_string())
         .collect(),
+        overlay_classes: vec!["discover-overlay", "Discover-overlay"]
+            .into_iter()
+            .map(|x| x.to_string())
+            .collect(),
         events_callbacks: EventsCallbacks {
             // Custom callback will be called when we change a workspace.
             on_change_workspace: Some(Box::new(|workspace, display| {
