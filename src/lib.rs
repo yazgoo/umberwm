@@ -122,6 +122,7 @@ pub struct Conf {
     pub wm_actions: HashMap<Keybind, Actions>,
     pub ignore_classes: Vec<String>,
     pub float_classes: Vec<String>,
+    pub overlay_classes: Vec<String>,
     pub events_callbacks: EventsCallbacks,
     pub with_gap: bool,
 }
@@ -139,6 +140,7 @@ const UMBERWM_STATE: &str = ".umberwm_state";
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct SerializableState {
     float_windows: Vec<Window>,
+    overlay_windows: Vec<Window>,
     workspaces: HashMap<WorkspaceName, Workspace>,
     current_workspace: WorkspaceName,
 }
@@ -147,6 +149,7 @@ pub struct UmberWm {
     conf: Conf,
     current_workspace: WorkspaceName,
     float_windows: Vec<Window>,
+    overlay_windows: Vec<Window>,
     workspaces: HashMap<WorkspaceName, Workspace>,
     conn: xcb::Connection,
     mouse_move_start: Option<MouseMoveStart>,
@@ -395,6 +398,13 @@ impl UmberWm {
         for (i, window) in workspace.windows.iter().enumerate() {
             self.focus_unfocus(window, i == workspace.focus).log();
         }
+        for overlay_window in &self.overlay_windows {
+            xcb::configure_window(
+                &self.conn,
+                *overlay_window,
+                &[(xcb::CONFIG_WINDOW_STACK_MODE as u16, xcb::STACK_MODE_ABOVE)],
+            );
+        }
     }
 
     fn resize_bsp(&self, non_float_windows: Vec<u32>, geos: Vec<Geometry>, gap: u32) {
@@ -597,6 +607,7 @@ impl UmberWm {
         let mut file = File::create(UMBERWM_STATE)?;
         let string = json::to_string(&SerializableState {
             float_windows: self.float_windows.clone(),
+            overlay_windows: self.overlay_windows.clone(),
             workspaces: self.workspaces.clone(),
             current_workspace: self.current_workspace.clone(),
         });
@@ -781,6 +792,13 @@ impl UmberWm {
                 .name(),
             wm_class.join("-")
         );
+        if !wm_class.is_empty()
+            && self.conf.overlay_classes.contains(&wm_class[0].to_string())
+            && !self.overlay_windows.contains(&window)
+        {
+            self.overlay_windows.push(window);
+            return Ok(());
+        }
         if window_types.contains(&window_type)
             || "_KDE_NET_WM_WINDOW_TYPE_OVERRIDE"
                 == xcb::get_atom_name(&self.conn, window_type)
@@ -884,6 +902,7 @@ impl UmberWm {
     }
 
     fn destroy_window(&mut self, window: u32) {
+        self.overlay_windows.retain(|&x| x != window);
         self.float_windows.retain(|&x| x != window);
         let mut workspace2: Option<Workspace> = None;
         for workspace in self.workspaces.values_mut() {
@@ -1035,6 +1054,7 @@ fn load_serializable_state(conf: &Conf) -> Result<SerializableState> {
     } else {
         Ok(SerializableState {
             float_windows: vec![],
+            overlay_windows: vec![],
             workspaces: conf
                 .workspaces_names
                 .clone()
@@ -1066,6 +1086,7 @@ pub fn umberwm(conf: Conf) -> UmberWm {
         conf,
         current_workspace: serializable_state.current_workspace,
         float_windows: serializable_state.float_windows,
+        overlay_windows: serializable_state.overlay_windows,
         workspaces: serializable_state.workspaces,
         conn,
         button_press_geometry: None,
