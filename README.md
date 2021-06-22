@@ -12,11 +12,10 @@ Video introduction [on LBRY][lbry] or [on youtube][yt].
 
   - Kiss: only window management (no taskbar, system tray, ...), complex stuff should be done using
     other programs (`rofi`, ...)
-  - Configuration as code (like `qtile`, `dwm`, `xmonad`)
+  - Configuration can be as code (like `qtile`, `dwm`, `xmonad`), as JSON, or both.
   - Tiled by default (Binary space partitioning)
   - Supports workspaces
   - Supports multiple displays
-  - Single file (~1000 LoC), not counting configuration (`main.rs`)
 
 # Prerequisites
 
@@ -26,7 +25,16 @@ You will need XCB bindings with the randr extension.
 
 Ubuntu: `sudo apt install libxcb-randr0-dev`.
 
-# Using it
+# Using it (binary)
+
+1. [Install rust and cargo][install-rust]
+1. `cargo install umberwm`
+1. run it once `umberwm`
+1. it will generate `~/.config/umberwm.json`
+1. modify umberwm.json as you see fit (more details on each field in src/main.rs)
+1. next time you run `umberwm`, it will take into account your configuration
+
+# Using it by modifying the source code
 
 `UmberWM` is used/configured in rust, here is how to use it:
 
