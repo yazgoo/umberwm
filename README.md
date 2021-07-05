@@ -19,8 +19,6 @@ Video introduction [on LBRY][lbry] or [on youtube][yt].
 
 # Prerequisites
 
-You should have xmodmap installed.
-
 You will need XCB bindings with the randr extension.
 
 Ubuntu: `sudo apt install libxcb-randr0-dev`.

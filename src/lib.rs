@@ -2,7 +2,6 @@ mod error;
 
 use error::{Error, LogError, Result};
 use miniserde::{json, Deserialize, Serialize};
-use regex::Regex;
 use std::cmp::max;
 use std::collections::HashMap;
 use std::fmt;
@@ -20,8 +19,7 @@ use xcb::ModMask;
 pub use xcb::{
     MOD_MASK_1, MOD_MASK_2, MOD_MASK_3, MOD_MASK_4, MOD_MASK_5, MOD_MASK_CONTROL, MOD_MASK_SHIFT,
 };
-
-type XmodmapPke = HashMap<u8, Vec<String>>;
+use xmodmap_pke_umberwm::{xmodmap_pke, XmodmapPke};
 
 #[derive(Eq, PartialEq, Hash, Debug, Clone, Deserialize, Serialize)]
 pub struct Keybind {
@@ -252,22 +250,6 @@ pub struct UmberWm {
     displays_geometries: Vec<Geometry>,
     randr_base: u8,
     previous_display: DisplayId,
-}
-
-fn xmodmap_pke() -> Result<XmodmapPke> {
-    let output = Command::new("xmodmap").arg("-pke").output()?;
-    let pattern = Regex::new(r"(\d+) = (.*)")?;
-    let lines = String::from_utf8(output.stdout)?
-        .lines()
-        .filter_map(|line| pattern.captures(line))
-        .map(|cap| {
-            (
-                cap[1].parse().unwrap(),
-                cap[2].split(' ').map(|s| s.to_string()).collect(),
-            )
-        })
-        .collect::<HashMap<u8, Vec<String>>>();
-    Ok(lines)
 }
 
 fn keycode_to_key(xmodmap_pke: &XmodmapPke, keycode: u8) -> Option<Key> {
@@ -1243,7 +1225,7 @@ pub fn umberwm_from_conf() -> Result<UmberWm> {
 pub fn umberwm(conf: Conf) -> UmberWm {
     let (conn, _) = xcb::Connection::connect(None).unwrap();
     let serializable_state = load_serializable_state(&conf).unwrap();
-    let xmodmap_pke = xmodmap_pke().unwrap();
+    let xmodmap_pke_res = xmodmap_pke(&conn).unwrap();
     let mut wm = UmberWm {
         conf,
         current_workspace: serializable_state.current_workspace,
@@ -1253,7 +1235,7 @@ pub fn umberwm(conf: Conf) -> UmberWm {
         conn,
         button_press_geometry: None,
         mouse_move_start: None,
-        xmodmap_pke,
+        xmodmap_pke: xmodmap_pke_res,
         displays_geometries: Vec::new(),
         randr_base: 0,
         previous_display: 0,

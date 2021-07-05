@@ -22,8 +22,6 @@ pub enum Error {
     #[error(transparent)]
     IoError(#[from] std::io::Error),
     #[error(transparent)]
-    RegexError(#[from] regex::Error),
-    #[error(transparent)]
     FromUtf8Error(#[from] std::string::FromUtf8Error),
     #[error(transparent)]
     XcbGenericError(#[from] xcb::GenericError),
