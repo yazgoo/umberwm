@@ -12,7 +12,7 @@ Video introduction [on LBRY][lbry] or [on youtube][yt].
 
   - Kiss: only window management (no taskbar, system tray, ...), complex stuff should be done using
     other programs (`rofi`, ...)
-  - Configuration can be as code (like `qtile`, `dwm`, `xmonad`), as JSON, or both.
+  - Configuration can be as code (like `qtile`, `dwm`, `xmonad`), as [RON](https://github.com/ron-rs/ron), or both.
   - Tiled by default (Binary space partitioning)
   - Supports workspaces
   - Supports multiple displays
