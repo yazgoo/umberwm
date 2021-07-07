@@ -1,14 +1,14 @@
 mod error;
 
 use error::{Error, LogError, Result};
-use miniserde::{json, Deserialize, Serialize};
+use serde::{Deserialize, Serialize};
+use serde_with::serde_as;
 use std::cmp::max;
 use std::collections::HashMap;
 use std::fmt;
 use std::fs::remove_file;
 use std::fs::File;
 use std::io::prelude::*;
-use std::num::ParseIntError;
 use std::path::Path;
 use std::process::Command;
 use std::str::FromStr;
@@ -27,18 +27,6 @@ pub struct Keybind {
     pub key: String,
 }
 
-#[derive(Debug)]
-struct NormalHints {
-    min_width: u32,
-    min_height: u32,
-    max_width: u32,
-    max_height: u32,
-    width_inc: u32,
-    height_inc: u32,
-    min_aspect: (u32, u32),
-    max_aspect: (u32, u32),
-}
-
 impl Keybind {
     pub fn new<M, K>(mod_mask: M, key: K) -> Self
     where
@@ -52,25 +40,16 @@ impl Keybind {
     }
 }
 
-impl FromStr for Keybind {
-    type Err = ParseIntError;
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let coords: Vec<&str> = s.split('.').collect();
-
-        let a = coords[0].parse::<u32>()?;
-        let b = coords[1];
-
-        Ok(Keybind {
-            mod_mask: a,
-            key: b.to_string(),
-        })
-    }
-}
-
-impl fmt::Display for Keybind {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}.{}", self.mod_mask, self.key)
-    }
+#[derive(Debug)]
+struct NormalHints {
+    min_width: u32,
+    min_height: u32,
+    max_width: u32,
+    max_height: u32,
+    width_inc: u32,
+    height_inc: u32,
+    min_aspect: (u32, u32),
+    max_aspect: (u32, u32),
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize, Hash)]
@@ -167,17 +146,20 @@ pub struct EventsCallbacks {
     pub on_change_workspace: OnChangeWorkspace,
 }
 
+#[serde_as]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct SerializableConf {
     pub meta: ModMask,
     pub border: WindowBorder,
     pub display_borders: Vec<DisplayBorder>,
     pub workspaces_names: Vec<Vec<WorkspaceName>>,
+    #[serde_as(as = "HashMap<serde_with::json::JsonString, _>")]
     pub wm_actions: HashMap<Keybind, Actions>,
     pub ignore_classes: Vec<String>,
     pub float_classes: Vec<String>,
     pub overlay_classes: Vec<String>,
     pub with_gap: bool,
+    #[serde_as(as = "HashMap<serde_with::json::JsonString, _>")]
     pub custom_commands: HashMap<Keybind, Vec<String>>,
     pub command_callbacks: HashMap<Events, Vec<String>>,
 }
@@ -196,7 +178,7 @@ impl SerializableConf {
     pub fn save(&self) -> Result<()> {
         let path = umberwm_conf();
         let mut file = File::create(path.clone())?;
-        let string = json::to_string(&self);
+        let string = serde_json::to_string_pretty(&self)?;
         file.write_all(string.as_bytes())?;
         println!("generated configuration in {}", path);
         Ok(())
@@ -205,7 +187,7 @@ impl SerializableConf {
         let mut file = File::open(umberwm_conf())?;
         let mut contents = String::new();
         file.read_to_string(&mut contents)?;
-        Ok(json::from_str(contents.as_str())?)
+        Ok(serde_json::from_str(contents.as_str())?)
     }
 
     pub fn exists() -> bool {
@@ -692,12 +674,12 @@ impl UmberWm {
 
     fn serialize_and_quit(&mut self) -> Result<()> {
         let mut file = File::create(UMBERWM_STATE)?;
-        let string = json::to_string(&SerializableState {
+        let string = serde_json::to_string(&SerializableState {
             float_windows: self.float_windows.clone(),
             overlay_windows: self.overlay_windows.clone(),
             workspaces: self.workspaces.clone(),
             current_workspace: self.current_workspace.clone(),
-        });
+        })?;
         file.write_all(string.as_bytes())?;
         std::process::exit(123);
     }
@@ -1175,7 +1157,7 @@ fn load_serializable_state(conf: &Conf) -> Result<SerializableState> {
         let mut file = File::open(UMBERWM_STATE)?;
         let mut contents = String::new();
         file.read_to_string(&mut contents)?;
-        let res: SerializableState = json::from_str(contents.as_str())
+        let res: SerializableState = serde_json::from_str(contents.as_str())
             .map_err(|_| Error::FailedToDeserializeFromJson(contents.to_owned()))?;
         remove_file(UMBERWM_STATE)?;
         Ok(res)
@@ -1211,7 +1193,7 @@ pub fn umberwm_from_conf() -> Result<UmberWm> {
     let mut file = File::open(umberwm_conf())?;
     let mut contents = String::new();
     file.read_to_string(&mut contents)?;
-    let res: SerializableConf = json::from_str(contents.as_str())
+    let res: SerializableConf = serde_json::from_str(contents.as_str())
         .map_err(|_| Error::FailedToDeserializeFromJson(contents.to_owned()))?;
     Ok(umberwm(Conf {
         serializable: res,
