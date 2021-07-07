@@ -28,8 +28,8 @@ Ubuntu: `sudo apt install libxcb-randr0-dev`.
 1. [Install rust and cargo][install-rust]
 1. `cargo install umberwm`
 1. run it once `umberwm`
-1. it will generate `~/.config/umberwm.json`
-1. modify umberwm.json as you see fit (more details on each field in src/main.rs)
+1. it will generate `~/.config/umberwm.ron`(using [RON file format](https://github.com/ron-rs/ron))
+1. modify umberwm.ron as you see fit (more details on each field in src/main.rs)
 1. next time you run `umberwm`, it will take into account your configuration
 
 # Using it by modifying the source code
