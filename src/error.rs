@@ -20,7 +20,7 @@ pub enum Error {
     #[error("Failed to deserialize from JSON: {0}")]
     FailedToDeserializeFromJson(String),
     #[error(transparent)]
-    SerdeError(#[from] serde_json::Error),
+    SerdeError(#[from] ron::error::Error),
     #[error(transparent)]
     IoError(#[from] std::io::Error),
     #[error(transparent)]
