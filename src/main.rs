@@ -148,6 +148,7 @@ fn main() {
             .into_iter()
             .collect(),
         };
-        serializable.save().ok();
+        println!("serializing conf...");
+        serializable.save().unwrap();
     }
 }
