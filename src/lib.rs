@@ -3,164 +3,20 @@ mod error;
 use error::{Error, LogError, Result};
 use ron::de::from_str;
 use ron::ser::{to_string, to_string_pretty, PrettyConfig};
-use serde::{Deserialize, Serialize};
 use std::cmp::max;
 use std::collections::HashMap;
-use std::fmt;
 use std::fs::remove_file;
 use std::fs::File;
 use std::io::prelude::*;
 use std::path::Path;
 use std::process::Command;
-use std::str::FromStr;
 use std::thread;
 use xcb::randr;
 use xcb::xproto;
-use xcb::ModMask;
-pub use xcb::{
-    MOD_MASK_1, MOD_MASK_2, MOD_MASK_3, MOD_MASK_4, MOD_MASK_5, MOD_MASK_CONTROL, MOD_MASK_SHIFT,
-};
-use xmodmap_pke_umberwm::{xmodmap_pke, XmodmapPke};
-
-#[derive(Eq, PartialEq, Hash, Debug, Clone, Deserialize, Serialize)]
-pub struct Keybind {
-    pub mod_mask: ModMask,
-    pub key: String,
-}
-
-impl Keybind {
-    pub fn new<M, K>(mod_mask: M, key: K) -> Self
-    where
-        M: Into<ModMask>,
-        K: Into<String>,
-    {
-        Keybind {
-            mod_mask: mod_mask.into(),
-            key: key.into(),
-        }
-    }
-}
-
-#[derive(Debug)]
-struct NormalHints {
-    min_width: u32,
-    min_height: u32,
-    max_width: u32,
-    max_height: u32,
-    width_inc: u32,
-    height_inc: u32,
-    min_aspect: (u32, u32),
-    max_aspect: (u32, u32),
-}
-
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize, Hash)]
-pub enum Events {
-    OnChangeWorkspace,
-}
-
-impl FromStr for Events {
-    type Err = ();
-
-    fn from_str(input: &str) -> Result<Events, Self::Err> {
-        match input {
-            "OnChangeWorkspace" => Ok(Events::OnChangeWorkspace),
-            _ => Err(()),
-        }
-    }
-}
-
-impl fmt::Display for Events {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "{}",
-            match self {
-                Events::OnChangeWorkspace => "OnChangeWorkspace",
-            }
-        )
-    }
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub enum Actions {
-    SwitchWindow,
-    SerializeAndQuit,
-    CloseWindow,
-    ChangeLayout,
-    ToggleGap,
-    Quit,
-}
-
-pub enum Meta {
-    Mod1,
-    Mod4,
-}
-
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-enum Layout {
-    Bspv,
-    Monocle,
-    Bsph,
-}
-
-type Window = u32;
-
-pub type Key = String;
-
-type WorkspaceName = Key;
-
-pub type CustomAction = Box<dyn Fn()>;
-
-type Color = u32;
-
-#[derive(Clone)]
-pub struct Geometry(u32, u32, u32, u32);
-
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct WindowBorder {
-    pub width: u32,
-    pub focus_color: Color,
-    pub normal_color: Color,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-struct Workspace {
-    layout: Layout,
-    windows: Vec<Window>,
-    focus: usize,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct DisplayBorder {
-    pub left: u32,
-    pub right: u32,
-    pub bottom: u32,
-    pub top: u32,
-    pub gap: u32,
-}
-
-type DisplayId = usize;
-
-pub type OnChangeWorkspace = Option<Box<dyn Fn(WorkspaceName, DisplayId)>>;
-
-pub struct EventsCallbacks {
-    pub on_change_workspace: OnChangeWorkspace,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct SerializableConf {
-    pub meta: ModMask,
-    pub border: WindowBorder,
-    pub display_borders: Vec<DisplayBorder>,
-    pub workspaces_names: Vec<Vec<WorkspaceName>>,
-    pub wm_actions: HashMap<Keybind, Actions>,
-    pub ignore_classes: Vec<String>,
-    pub float_classes: Vec<String>,
-    pub overlay_classes: Vec<String>,
-    pub with_gap: bool,
-    pub custom_commands: HashMap<Keybind, Vec<String>>,
-    pub command_callbacks: HashMap<Events, Vec<String>>,
-}
+pub mod model;
+use crate::model::*;
+use xmodmap_pke_umberwm::xmodmap_pke;
+mod keycode;
 
 const UMBERWM_CONF: &str = "umberwm.ron";
 
@@ -194,70 +50,15 @@ impl SerializableConf {
     }
 }
 
-pub struct Conf {
-    pub serializable: SerializableConf,
-    pub custom_actions: HashMap<Keybind, CustomAction>,
-    pub events_callbacks: EventsCallbacks,
-}
-
-#[derive(Clone)]
-struct MouseMoveStart {
-    root_x: i16,
-    root_y: i16,
-    child: Window,
-    detail: u8,
-}
-
 const UMBERWM_STATE: &str = ".umberwm_state";
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct SerializableState {
-    float_windows: Vec<Window>,
-    overlay_windows: Vec<Window>,
-    workspaces: HashMap<WorkspaceName, Workspace>,
-    current_workspace: WorkspaceName,
-}
-
-pub struct UmberWm {
-    conf: Conf,
-    current_workspace: WorkspaceName,
-    float_windows: Vec<Window>,
-    overlay_windows: Vec<Window>,
-    workspaces: HashMap<WorkspaceName, Workspace>,
-    conn: xcb::Connection,
-    mouse_move_start: Option<MouseMoveStart>,
-    button_press_geometry: Option<Geometry>,
-    xmodmap_pke: XmodmapPke,
-    displays_geometries: Vec<Geometry>,
-    randr_base: u8,
-    previous_display: DisplayId,
-}
-
-fn keycode_to_key(xmodmap_pke: &XmodmapPke, keycode: u8) -> Option<Key> {
-    if let Some(x) = xmodmap_pke.get(&keycode) {
-        if !x.is_empty() {
-            return Some(x[0].to_string());
-        }
-    }
-    None
-}
-
-fn key_to_keycode(xmodmap_pke: &XmodmapPke, key: &str) -> Option<u8> {
-    for (keycode, symbols) in xmodmap_pke.iter() {
-        if symbols.contains(&key.to_string()) {
-            return Some(*keycode);
-        }
-    }
-    None
-}
 
 fn unmap_workspace_windows(
     conn: &xcb::Connection,
-    windows: &mut Vec<Window>,
+    windows: &mut Vec<model::Window>,
     focus: usize,
     move_window: bool,
     same_display: bool,
-) -> Option<Window> {
+) -> Option<model::Window> {
     let mut window_to_move = None;
     for (i, window) in windows.iter().enumerate() {
         if move_window && i == focus {
@@ -271,12 +72,12 @@ fn unmap_workspace_windows(
 
 fn change_workspace(
     conn: &xcb::Connection,
-    workspaces: &mut HashMap<WorkspaceName, Workspace>,
-    previous_workspace: WorkspaceName,
-    next_workspace: WorkspaceName,
+    workspaces: &mut HashMap<model::WorkspaceName, model::Workspace>,
+    previous_workspace: model::WorkspaceName,
+    next_workspace: model::WorkspaceName,
     move_window: bool,
     same_display: bool,
-) -> Result<WorkspaceName> {
+) -> Result<model::WorkspaceName> {
     let workspace = workspaces
         .get_mut(&previous_workspace)
         .ok_or(Error::WorkspaceNotFound)?;
@@ -422,7 +223,7 @@ impl UmberWm {
         self.conf.serializable.display_borders[i].clone()
     }
 
-    fn resize_workspace_windows(&mut self, workspace: &Workspace, mut display: usize) {
+    fn resize_workspace_windows(&mut self, workspace: &model::Workspace, mut display: usize) {
         let mut non_float_windows = workspace.windows.clone();
         non_float_windows.retain(|w| !self.float_windows.contains(&w));
         let count = non_float_windows.len();
@@ -491,7 +292,7 @@ impl UmberWm {
         }
     }
 
-    fn resize_monocle(&self, workspace: &Workspace, geos: Vec<Geometry>, gap: u32) {
+    fn resize_monocle(&self, workspace: &model::Workspace, geos: Vec<Geometry>, gap: u32) {
         if let Some(window) = workspace.windows.get(workspace.focus) {
             xcb::configure_window(
                 &self.conn,
@@ -573,7 +374,7 @@ impl UmberWm {
             self.conf.serializable.custom_commands.keys().collect(),
         ] {
             for keybind in list {
-                key_to_keycode(&self.xmodmap_pke, &keybind.key).map(|keycode| {
+                keycode::key_to_keycode(&self.xmodmap_pke, &keybind.key).map(|keycode| {
                     xcb::grab_key(
                         &self.conn,
                         false,
@@ -590,7 +391,7 @@ impl UmberWm {
 
     fn grab_wm_action_keys(&self, screen: &xcb::Screen) {
         for keybind in self.conf.serializable.wm_actions.keys() {
-            key_to_keycode(&self.xmodmap_pke, &keybind.key).map(|keycode| {
+            keycode::key_to_keycode(&self.xmodmap_pke, &keybind.key).map(|keycode| {
                 xcb::grab_key(
                     &self.conn,
                     false,
@@ -611,7 +412,7 @@ impl UmberWm {
         ] {
             for workspace_name_in_display in &self.conf.serializable.workspaces_names {
                 for workspace_name in workspace_name_in_display {
-                    key_to_keycode(&self.xmodmap_pke, workspace_name).map(|keycode| {
+                    keycode::key_to_keycode(&self.xmodmap_pke, workspace_name).map(|keycode| {
                         xcb::grab_key(
                             &self.conn,
                             false,
@@ -785,7 +586,7 @@ impl UmberWm {
         }
     }
 
-    fn get_wm_normal_hints(&mut self, id: u32) -> Result<Option<NormalHints>> {
+    fn get_wm_normal_hints(&mut self, id: u32) -> Result<Option<model::NormalHints>> {
         let window: xproto::Window = id;
         let ident = xcb::intern_atom(&self.conn, true, "WM_NORMAL_HINTS")
             .get_reply()?
@@ -795,7 +596,7 @@ impl UmberWm {
                 .get_reply()?;
         if reply.value_len() >= 15 {
             let value = reply.value();
-            let hints = NormalHints {
+            let hints = model::NormalHints {
                 min_width: value[5],
                 min_height: value[6],
                 max_width: value[7],
@@ -988,7 +789,7 @@ impl UmberWm {
     fn destroy_window(&mut self, window: u32) {
         self.overlay_windows.retain(|&x| x != window);
         self.float_windows.retain(|&x| x != window);
-        let mut workspace2: Option<Workspace> = None;
+        let mut workspace2: Option<model::Workspace> = None;
         for workspace in self.workspaces.values_mut() {
             if workspace.windows.contains(&window) {
                 workspace.windows.retain(|&x| x != window);
@@ -1061,7 +862,7 @@ impl UmberWm {
                 geometry.height() as u32,
             ));
         }
-        self.mouse_move_start = Some(MouseMoveStart {
+        self.mouse_move_start = Some(model::MouseMoveStart {
             root_x: event.root_x(),
             root_y: event.root_y(),
             child: event.child(),
@@ -1084,7 +885,7 @@ impl UmberWm {
     fn handle_key_press(&mut self, event: &xcb::KeyPressEvent) {
         let keycode = event.detail();
         let mod_mask = event.state();
-        if let Some(key) = &keycode_to_key(&self.xmodmap_pke, keycode) {
+        if let Some(key) = &keycode::keycode_to_key(&self.xmodmap_pke, keycode) {
             let keybind = Keybind::new(mod_mask, key);
 
             self.handle_workspace_change(&keybind);
@@ -1174,7 +975,7 @@ fn load_serializable_state(conf: &Conf) -> Result<SerializableState> {
                 .map(|x| {
                     (
                         x,
-                        Workspace {
+                        model::Workspace {
                             layout: Layout::Bspv,
                             windows: vec![],
                             focus: 0,

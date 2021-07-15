@@ -1,9 +1,10 @@
+use ::umberwm::model::{
+    Actions, Conf, DisplayBorder, Events, EventsCallbacks, Keybind, SerializableConf, WindowBorder,
+    MOD_MASK_1, MOD_MASK_4, MOD_MASK_CONTROL, MOD_MASK_SHIFT,
+};
+use ::umberwm::umberwm;
 use std::collections::HashMap;
 use std::env;
-use umberwm::{
-    umberwm, Actions, Conf, DisplayBorder, Events, EventsCallbacks, Keybind, SerializableConf,
-    WindowBorder, MOD_MASK_1, MOD_MASK_4, MOD_MASK_CONTROL, MOD_MASK_SHIFT,
-};
 
 fn main() {
     if SerializableConf::exists() {
