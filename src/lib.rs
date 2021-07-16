@@ -9,7 +9,7 @@ mod keycode;
 mod serializable_conf;
 mod serializable_state;
 use serializable_state::load_serializable_state;
-mod umberwm;
+mod umberwm_impl;
 use std::collections::HashMap;
 
 pub fn umberwm_from_conf() -> Result<UmberWm> {

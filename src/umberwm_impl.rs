@@ -1,8 +1,13 @@
 use crate::error::{Error, LogError, Result};
 use crate::geometries::geometries_bsp;
+mod helpers;
 use crate::keycode;
 use crate::model::*;
 use crate::serializable_state::UMBERWM_STATE;
+use helpers::{
+    get_atom_property, get_displays_geometries, get_str_property,
+    is_firefox_drag_n_drop_initialization_window, window_types_from_list,
+};
 use ron::ser::to_string;
 use std::cmp::max;
 use std::collections::HashMap;
@@ -70,73 +75,7 @@ fn change_workspace(
     Ok(next_workspace)
 }
 
-fn window_types_from_list(conn: &xcb::Connection, types_names: &[String]) -> Vec<xcb::Atom> {
-    types_names
-        .iter()
-        .map(|x| {
-            let name = format!("_NET_WM_WINDOW_TYPE_{}", x.to_uppercase());
-            let res = xcb::intern_atom(&conn, true, name.as_str())
-                .get_reply()
-                .map(|x| x.atom());
-            res.log()
-        })
-        .flatten()
-        .collect()
-}
-
 impl UmberWm {
-    pub fn get_displays_geometries(&mut self) -> Result<Vec<Geometry>> {
-        let conn = &self.conn;
-        let setup = self.conn.get_setup();
-        let screen = setup.roots().next().unwrap();
-        let window_dummy = conn.generate_id();
-        xcb::create_window(
-            &conn,
-            0,
-            window_dummy,
-            screen.root(),
-            0,
-            0,
-            1,
-            1,
-            0,
-            0,
-            0,
-            &[],
-        );
-        let screen_res_cookie = randr::get_screen_resources(&conn, window_dummy);
-        let screen_res_reply = screen_res_cookie.get_reply().unwrap();
-        let crtcs = screen_res_reply.crtcs();
-
-        let mut crtc_cookies = Vec::with_capacity(crtcs.len());
-        for crtc in crtcs {
-            crtc_cookies.push(randr::get_crtc_info(&conn, *crtc, 0));
-        }
-
-        let mut result = Vec::new();
-        for (i, crtc_cookie) in crtc_cookies.into_iter().enumerate() {
-            if let Ok(reply) = crtc_cookie.get_reply() {
-                if reply.width() > 0 {
-                    if i != 0 {
-                        println!();
-                    }
-                    println!("CRTC[{}] INFO:", i);
-                    println!(" x-off\t: {}", reply.x());
-                    println!(" y-off\t: {}", reply.y());
-                    println!(" width\t: {}", reply.width());
-                    println!(" height\t: {}", reply.height());
-                    result.push(Geometry(
-                        reply.x() as u32,
-                        reply.y() as u32,
-                        reply.width() as u32,
-                        reply.height() as u32,
-                    ))
-                }
-            }
-        }
-        Ok(result)
-    }
-
     /// Returns the display border for the display requested, or for the last display if the index
     /// is out of range.
     fn get_display_border(&mut self, display: usize) -> DisplayBorder {
@@ -244,7 +183,7 @@ impl UmberWm {
     }
 
     pub fn init(&mut self) {
-        self.displays_geometries = self.get_displays_geometries().unwrap();
+        self.displays_geometries = get_displays_geometries(&self.conn).unwrap();
         let screen = self.conn.get_setup().roots().next().unwrap();
         self.randr_base = self
             .conn
@@ -473,79 +412,6 @@ impl UmberWm {
         Ok(())
     }
 
-    fn get_str_property(&mut self, window: u32, name: &str) -> Option<String> {
-        let _net_wm_window_type = xcb::intern_atom(&self.conn, false, name)
-            .get_reply()
-            .unwrap()
-            .atom();
-        let cookie = xcb::get_property(
-            &self.conn,
-            false,
-            window,
-            _net_wm_window_type,
-            xcb::ATOM_ANY,
-            0,
-            1024,
-        );
-        if let Ok(reply) = cookie.get_reply() {
-            Some(std::str::from_utf8(reply.value()).unwrap().to_string())
-        } else {
-            None
-        }
-    }
-
-    fn get_atom_property(&mut self, id: u32, name: &str) -> Result<u32> {
-        let window: xproto::Window = id;
-        let ident = xcb::intern_atom(&self.conn, true, name).get_reply()?.atom();
-        let reply =
-            xproto::get_property(&self.conn, false, window, ident, xproto::ATOM_ATOM, 0, 1024)
-                .get_reply()?;
-        if reply.value_len() == 0 {
-            Ok(42)
-        } else {
-            Ok(reply.value()[0])
-        }
-    }
-
-    fn get_wm_normal_hints(&mut self, id: u32) -> Result<Option<NormalHints>> {
-        let window: xproto::Window = id;
-        let ident = xcb::intern_atom(&self.conn, true, "WM_NORMAL_HINTS")
-            .get_reply()?
-            .atom();
-        let reply =
-            xproto::get_property(&self.conn, false, window, ident, xproto::ATOM_ANY, 0, 1024)
-                .get_reply()?;
-        if reply.value_len() >= 15 {
-            let value = reply.value();
-            let hints = NormalHints {
-                min_width: value[5],
-                min_height: value[6],
-                max_width: value[7],
-                max_height: value[8],
-                width_inc: value[9],
-                height_inc: value[10],
-                min_aspect: (value[11], value[12]),
-                max_aspect: (value[13], value[14]),
-            };
-            Ok(Some(hints))
-        } else {
-            Ok(None)
-        }
-    }
-
-    fn is_firefox_drag_n_drop_initialization_window(
-        &mut self,
-        id: u32,
-        wm_class: &[&str],
-    ) -> Result<bool> {
-        if wm_class.len() >= 2 && wm_class[0] == "firefox" && wm_class[1] == "firefox" {
-            if let Some(hints) = self.get_wm_normal_hints(id)? {
-                return Ok(hints.max_height == 0 && hints.max_width == 0);
-            }
-        }
-        Ok(false)
-    }
-
     fn setup_new_window(&mut self, window: u32) -> Result<()> {
         for workspace in self.workspaces.values() {
             for workspace_window in &workspace.windows {
@@ -555,10 +421,9 @@ impl UmberWm {
                 }
             }
         }
-        let wm_class = self
-            .get_str_property(window, "WM_CLASS")
-            .ok_or(Error::FailedToGetWmClass)?;
-        let window_type = self.get_atom_property(window, "_NET_WM_WINDOW_TYPE")?;
+        let wm_class =
+            get_str_property(&self.conn, window, "WM_CLASS").ok_or(Error::FailedToGetWmClass)?;
+        let window_type = get_atom_property(&self.conn, window, "_NET_WM_WINDOW_TYPE")?;
         let window_types = window_types_from_list(
             &self.conn,
             &vec![
@@ -604,7 +469,7 @@ impl UmberWm {
             return Ok(());
         }
         if !wm_class.is_empty() {
-            if self.is_firefox_drag_n_drop_initialization_window(window, &wm_class)? {
+            if is_firefox_drag_n_drop_initialization_window(&self.conn, window, &wm_class)? {
                 return Ok(());
             }
             for item in &wm_class {
@@ -746,7 +611,7 @@ impl UmberWm {
                     self.setup_new_window(map_notify.window()).log();
                 }
                 if r == self.randr_base + randr::NOTIFY {
-                    self.displays_geometries = self.get_displays_geometries().unwrap();
+                    self.displays_geometries = get_displays_geometries(&self.conn).unwrap();
                 }
                 if r == xcb::DESTROY_NOTIFY as u8 {
                     let map_notify: &xcb::DestroyNotifyEvent = unsafe { xcb::cast_event(&event) };
