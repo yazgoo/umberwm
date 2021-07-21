@@ -1,7 +1,22 @@
-use crate::error::{LogError, Result};
+use crate::error::{Error, LogError, Result};
 use crate::model::*;
+use std::collections::HashMap;
+use std::process::Command;
+use std::thread;
 use xcb::randr;
 use xcb::xproto;
+
+pub fn run_command(list: Option<&Vec<String>>) {
+    if let Some(args) = list {
+        if let Some(head) = args.first() {
+            let tail: Vec<String> = args[1..].to_vec();
+            let headc = head.clone();
+            thread::spawn(move || {
+                let _ = Command::new(headc).args(tail).status();
+            });
+        }
+    }
+}
 
 pub fn get_displays_geometries(conn: &xcb::Connection) -> Result<Vec<Geometry>> {
     let setup = conn.get_setup();
@@ -137,4 +152,68 @@ pub fn window_types_from_list(conn: &xcb::Connection, types_names: &[String]) ->
         })
         .flatten()
         .collect()
+}
+
+fn unmap_workspace_windows(
+    conn: &xcb::Connection,
+    windows: &mut Vec<Window>,
+    focus: usize,
+    move_window: bool,
+    same_display: bool,
+) -> Option<Window> {
+    let mut window_to_move = None;
+    for (i, window) in windows.iter().enumerate() {
+        if move_window && i == focus {
+            window_to_move = Some(*window);
+        } else if same_display {
+            xcb::unmap_window(conn, *window);
+        }
+    }
+    window_to_move
+}
+
+pub fn change_workspace(
+    conn: &xcb::Connection,
+    workspaces: &mut HashMap<WorkspaceName, Workspace>,
+    previous_workspace: WorkspaceName,
+    next_workspace: WorkspaceName,
+    move_window: bool,
+    same_display: bool,
+) -> Result<WorkspaceName> {
+    let workspace = workspaces
+        .get_mut(&previous_workspace)
+        .ok_or(Error::WorkspaceNotFound)?;
+    let window_to_move = unmap_workspace_windows(
+        conn,
+        &mut workspace.windows,
+        workspace.focus,
+        move_window,
+        same_display,
+    );
+    if let Some(w) = window_to_move {
+        workspace.windows.retain(|x| *x != w);
+        if !workspace.windows.is_empty() {
+            workspace.focus = workspace.windows.len() - 1;
+        } else {
+            workspace.focus = 0;
+        }
+    };
+    let workspace = workspaces
+        .get_mut(&next_workspace)
+        .ok_or(Error::WorkspaceNotFound)?;
+    for window in &workspace.windows {
+        xcb::map_window(conn, *window);
+    }
+    if let Some(w) = window_to_move {
+        workspace.windows.push(w);
+        workspace.focus = workspace.windows.len() - 1;
+    }
+    Ok(next_workspace)
+}
+
+/// Returns the display border for the display requested, or for the last display if the index
+/// is out of range.
+pub fn get_display_border(display_borders: &[DisplayBorder], display: usize) -> DisplayBorder {
+    let i = std::cmp::min(display_borders.len() - 1, display);
+    display_borders[i].clone()
 }
