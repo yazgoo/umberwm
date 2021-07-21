@@ -3,86 +3,22 @@ use crate::geometries::geometries_bsp;
 mod helpers;
 use crate::keycode;
 use crate::model::*;
+mod resize;
 use crate::serializable_state::UMBERWM_STATE;
 use helpers::{
-    get_atom_property, get_displays_geometries, get_str_property,
-    is_firefox_drag_n_drop_initialization_window, window_types_from_list,
+    change_workspace, get_atom_property, get_display_border, get_displays_geometries,
+    get_str_property, is_firefox_drag_n_drop_initialization_window, run_command,
+    window_types_from_list,
 };
+use resize::{resize_bsp, resize_monocle};
 use ron::ser::to_string;
 use std::cmp::max;
-use std::collections::HashMap;
 use std::fs::File;
 use std::io::prelude::*;
-use std::process::Command;
-use std::thread;
 use xcb::randr;
 use xcb::xproto;
 
-fn unmap_workspace_windows(
-    conn: &xcb::Connection,
-    windows: &mut Vec<Window>,
-    focus: usize,
-    move_window: bool,
-    same_display: bool,
-) -> Option<Window> {
-    let mut window_to_move = None;
-    for (i, window) in windows.iter().enumerate() {
-        if move_window && i == focus {
-            window_to_move = Some(*window);
-        } else if same_display {
-            xcb::unmap_window(conn, *window);
-        }
-    }
-    window_to_move
-}
-
-fn change_workspace(
-    conn: &xcb::Connection,
-    workspaces: &mut HashMap<WorkspaceName, Workspace>,
-    previous_workspace: WorkspaceName,
-    next_workspace: WorkspaceName,
-    move_window: bool,
-    same_display: bool,
-) -> Result<WorkspaceName> {
-    let workspace = workspaces
-        .get_mut(&previous_workspace)
-        .ok_or(Error::WorkspaceNotFound)?;
-    let window_to_move = unmap_workspace_windows(
-        conn,
-        &mut workspace.windows,
-        workspace.focus,
-        move_window,
-        same_display,
-    );
-    if let Some(w) = window_to_move {
-        workspace.windows.retain(|x| *x != w);
-        if !workspace.windows.is_empty() {
-            workspace.focus = workspace.windows.len() - 1;
-        } else {
-            workspace.focus = 0;
-        }
-    };
-    let workspace = workspaces
-        .get_mut(&next_workspace)
-        .ok_or(Error::WorkspaceNotFound)?;
-    for window in &workspace.windows {
-        xcb::map_window(conn, *window);
-    }
-    if let Some(w) = window_to_move {
-        workspace.windows.push(w);
-        workspace.focus = workspace.windows.len() - 1;
-    }
-    Ok(next_workspace)
-}
-
 impl UmberWm {
-    /// Returns the display border for the display requested, or for the last display if the index
-    /// is out of range.
-    fn get_display_border(&mut self, display: usize) -> DisplayBorder {
-        let i = std::cmp::min(self.conf.serializable.display_borders.len() - 1, display);
-        self.conf.serializable.display_borders[i].clone()
-    }
-
     fn resize_workspace_windows(&mut self, workspace: &Workspace, mut display: usize) {
         let mut non_float_windows = workspace.windows.clone();
         non_float_windows.retain(|w| !self.float_windows.contains(&w));
@@ -93,7 +29,7 @@ impl UmberWm {
         if display >= self.displays_geometries.len() {
             display = self.displays_geometries.len() - 1;
         }
-        let display_border = self.get_display_border(display);
+        let display_border = get_display_border(&self.conf.serializable.display_borders, display);
         let display_geometry = self.displays_geometries.get(display).unwrap();
         let width = display_geometry.2 as u32 - display_border.right - display_border.left;
         let height = display_geometry.3 as u32 - display_border.top - display_border.bottom;
@@ -110,8 +46,20 @@ impl UmberWm {
             Layout::Monocle => geometries_bsp(0, 1, left, top, width, height, 1),
         };
         match workspace.layout {
-            Layout::Bspv | Layout::Bsph => self.resize_bsp(non_float_windows, geos, gap),
-            Layout::Monocle => self.resize_monocle(workspace, geos, gap),
+            Layout::Bspv | Layout::Bsph => resize_bsp(
+                &self.conn,
+                self.conf.serializable.border.width,
+                non_float_windows,
+                geos,
+                gap,
+            ),
+            Layout::Monocle => resize_monocle(
+                &self.conn,
+                self.conf.serializable.border.width,
+                workspace,
+                geos,
+                gap,
+            ),
         }
         for (i, window) in workspace.windows.iter().enumerate() {
             self.focus_unfocus(window, i == workspace.focus).log();
@@ -121,63 +69,6 @@ impl UmberWm {
                 &self.conn,
                 *overlay_window,
                 &[(xcb::CONFIG_WINDOW_STACK_MODE as u16, xcb::STACK_MODE_ABOVE)],
-            );
-        }
-    }
-
-    fn resize_bsp(&self, non_float_windows: Vec<u32>, geos: Vec<Geometry>, gap: u32) {
-        for (window, geo) in non_float_windows.iter().zip(geos.iter()) {
-            xcb::configure_window(
-                &self.conn,
-                *window,
-                &[
-                    (xcb::CONFIG_WINDOW_X as u16, geo.0 + gap),
-                    (xcb::CONFIG_WINDOW_Y as u16, geo.1 + gap),
-                    (
-                        xcb::CONFIG_WINDOW_WIDTH as u16,
-                        geo.2
-                            .saturating_sub(2 * self.conf.serializable.border.width + 2 * gap),
-                    ),
-                    (
-                        xcb::CONFIG_WINDOW_HEIGHT as u16,
-                        geo.3
-                            .saturating_sub(2 * self.conf.serializable.border.width + 2 * gap),
-                    ),
-                    (
-                        xcb::CONFIG_WINDOW_BORDER_WIDTH as u16,
-                        self.conf.serializable.border.width,
-                    ),
-                ],
-            );
-        }
-    }
-
-    fn resize_monocle(&self, workspace: &Workspace, geos: Vec<Geometry>, gap: u32) {
-        if let Some(window) = workspace.windows.get(workspace.focus) {
-            xcb::configure_window(
-                &self.conn,
-                *window,
-                &[
-                    (xcb::CONFIG_WINDOW_X as u16, geos[0].0 + gap),
-                    (xcb::CONFIG_WINDOW_Y as u16, geos[0].1 + gap),
-                    (
-                        xcb::CONFIG_WINDOW_WIDTH as u16,
-                        geos[0]
-                            .2
-                            .saturating_sub(2 * self.conf.serializable.border.width + 2 * gap),
-                    ),
-                    (
-                        xcb::CONFIG_WINDOW_HEIGHT as u16,
-                        geos[0]
-                            .3
-                            .saturating_sub(2 * self.conf.serializable.border.width + 2 * gap),
-                    ),
-                    (
-                        xcb::CONFIG_WINDOW_BORDER_WIDTH as u16,
-                        self.conf.serializable.border.width,
-                    ),
-                    (xcb::CONFIG_WINDOW_STACK_MODE as u16, xcb::STACK_MODE_ABOVE),
-                ],
             );
         }
     }
@@ -656,18 +547,6 @@ impl UmberWm {
         });
     }
 
-    fn run_command(list: Option<&Vec<String>>) {
-        if let Some(args) = list {
-            if let Some(head) = args.first() {
-                let tail: Vec<String> = args[1..].to_vec();
-                let headc = head.clone();
-                thread::spawn(move || {
-                    let _ = Command::new(headc).args(tail).status();
-                });
-            }
-        }
-    }
-
     fn handle_key_press(&mut self, event: &xcb::KeyPressEvent) {
         let keycode = event.detail();
         let mod_mask = event.state();
@@ -688,7 +567,7 @@ impl UmberWm {
                 .custom_commands
                 .contains_key(&keybind)
             {
-                Self::run_command(self.conf.serializable.custom_commands.get(&keybind));
+                run_command(self.conf.serializable.custom_commands.get(&keybind));
             }
         }
     }
@@ -726,7 +605,7 @@ impl UmberWm {
                     {
                         callback(keybind.key.clone(), actual_display)
                     }
-                    Self::run_command(
+                    run_command(
                         self.conf
                             .serializable
                             .command_callbacks
