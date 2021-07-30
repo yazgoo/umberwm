@@ -23,7 +23,7 @@ pub fn get_displays_geometries(conn: &xcb::Connection) -> Result<Vec<Geometry>> 
     let screen = setup.roots().next().unwrap();
     let window_dummy = conn.generate_id();
     xcb::create_window(
-        &conn,
+        conn,
         0,
         window_dummy,
         screen.root(),
@@ -36,13 +36,13 @@ pub fn get_displays_geometries(conn: &xcb::Connection) -> Result<Vec<Geometry>> 
         0,
         &[],
     );
-    let screen_res_cookie = randr::get_screen_resources(&conn, window_dummy);
+    let screen_res_cookie = randr::get_screen_resources(conn, window_dummy);
     let screen_res_reply = screen_res_cookie.get_reply().unwrap();
     let crtcs = screen_res_reply.crtcs();
 
     let mut crtc_cookies = Vec::with_capacity(crtcs.len());
     for crtc in crtcs {
-        crtc_cookies.push(randr::get_crtc_info(&conn, *crtc, 0));
+        crtc_cookies.push(randr::get_crtc_info(conn, *crtc, 0));
     }
 
     let mut result = Vec::new();
@@ -145,7 +145,7 @@ pub fn window_types_from_list(conn: &xcb::Connection, types_names: &[String]) ->
         .iter()
         .map(|x| {
             let name = format!("_NET_WM_WINDOW_TYPE_{}", x.to_uppercase());
-            let res = xcb::intern_atom(&conn, true, name.as_str())
+            let res = xcb::intern_atom(conn, true, name.as_str())
                 .get_reply()
                 .map(|x| x.atom());
             res.log()

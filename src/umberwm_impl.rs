@@ -21,7 +21,7 @@ use xcb::xproto;
 impl UmberWm {
     fn resize_workspace_windows(&mut self, workspace: &Workspace, mut display: usize) {
         let mut non_float_windows = workspace.windows.clone();
-        non_float_windows.retain(|w| !self.float_windows.contains(&w));
+        non_float_windows.retain(|w| !self.float_windows.contains(w));
         let count = non_float_windows.len();
         if count == 0 || self.displays_geometries.is_empty() {
             return;

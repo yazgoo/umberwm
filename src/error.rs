@@ -20,13 +20,13 @@ pub enum Error {
     #[error("Failed to deserialize from JSON: {0}")]
     FailedToDeserializeFromJson(String),
     #[error(transparent)]
-    SerdeError(#[from] ron::error::Error),
+    Error(#[from] ron::error::Error),
     #[error(transparent)]
-    IoError(#[from] std::io::Error),
+    Io(#[from] std::io::Error),
     #[error(transparent)]
-    FromUtf8Error(#[from] std::string::FromUtf8Error),
+    FromUtf8(#[from] std::string::FromUtf8Error),
     #[error(transparent)]
-    XcbGenericError(#[from] xcb::GenericError),
+    XcbGeneric(#[from] xcb::GenericError),
 }
 
 pub type Result<T, E = Error> = std::result::Result<T, E>;
