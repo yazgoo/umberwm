@@ -359,6 +359,7 @@ impl UmberWm {
         {
             return Ok(());
         }
+        let mut target_workspace = self.current_workspace.clone();
         if !wm_class.is_empty() {
             if is_firefox_drag_n_drop_initialization_window(&self.conn, window, &wm_class)? {
                 return Ok(());
@@ -373,9 +374,14 @@ impl UmberWm {
                 {
                     return Ok(());
                 }
+                if let Some(sticky_workspace) =
+                    self.conf.serializable.sticky_classes.get(&item.to_string())
+                {
+                    target_workspace = sticky_workspace.clone();
+                }
             }
         }
-        if let Some(workspace) = self.workspaces.get_mut(&self.current_workspace) {
+        if let Some(workspace) = self.workspaces.get_mut(&target_workspace) {
             if !workspace.windows.contains(&window) {
                 if !wm_class.is_empty()
                     && self
@@ -392,20 +398,26 @@ impl UmberWm {
                 let workspace2 = workspace.clone();
                 let workspaces_names_by_display = self.conf.serializable.workspaces_names.clone();
                 for (display, workspaces_names) in workspaces_names_by_display.iter().enumerate() {
-                    if workspaces_names.contains(&self.current_workspace) {
+                    if workspaces_names.contains(&self.current_workspace)
+                        && self.current_workspace == target_workspace
+                    {
                         self.resize_workspace_windows(&workspace2, display);
                     }
                 }
             }
         }
-        xcb::change_window_attributes(
-            &self.conn,
-            window,
-            &[(
-                xcb::CW_EVENT_MASK,
-                xcb::EVENT_MASK_ENTER_WINDOW | xcb::EVENT_MASK_LEAVE_WINDOW,
-            )],
-        );
+        if self.current_workspace == target_workspace {
+            xcb::change_window_attributes(
+                &self.conn,
+                window,
+                &[(
+                    xcb::CW_EVENT_MASK,
+                    xcb::EVENT_MASK_ENTER_WINDOW | xcb::EVENT_MASK_LEAVE_WINDOW,
+                )],
+            );
+        } else {
+            xcb::unmap_window(&self.conn, window);
+        }
         Ok(())
     }
 

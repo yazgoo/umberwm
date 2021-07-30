@@ -126,6 +126,8 @@ pub struct SerializableConf {
     pub float_classes: Vec<String>,
     /// will not resize and display on top windows with this wm_class
     pub overlay_classes: Vec<String>,
+    /// will stick these window classes to theses workspace on window open
+    pub sticky_classes: HashMap<String, WorkspaceName>,
     /// should we enable gaps (as defined in border) on startup
     pub with_gap: bool,
     /// run commands on given keys
