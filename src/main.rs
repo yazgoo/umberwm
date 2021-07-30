@@ -114,7 +114,7 @@ fn main() {
                 .into_iter()
                 .map(|x| x.to_string())
                 .collect(),
-
+            sticky_classes: vec![].into_iter().collect(),
             // Defines if there are gaps between windows (assuming `gap` is not 0 in `display_borders`)
             with_gap: false,
             custom_commands: vec![
