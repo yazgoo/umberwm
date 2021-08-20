@@ -1,6 +1,6 @@
 [package]
 name = "umberwm"
-version = "0.0.28"
+version = "0.0.29"
 authors = ["yazgoo <yazgoo@gmail.com>"]
 edition = "2018"
 license = "MIT"

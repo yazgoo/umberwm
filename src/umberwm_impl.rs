@@ -617,12 +617,17 @@ impl UmberWm {
                     {
                         callback(keybind.key.clone(), actual_display)
                     }
-                    run_command(
-                        self.conf
-                            .serializable
-                            .command_callbacks
-                            .get(&Events::OnChangeWorkspace),
-                    );
+                    self.conf
+                        .serializable
+                        .command_callbacks
+                        .get(&Events::OnChangeWorkspace)
+                        .map(|v| {
+                            let res = v
+                                .into_iter()
+                                .map(|x| x.replace("%workspace_name%", &keybind.key.clone()))
+                                .collect::<Vec<String>>();
+                            run_command(Some(&res));
+                        });
                 }
             }
         }
