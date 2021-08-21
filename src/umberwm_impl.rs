@@ -73,6 +73,12 @@ impl UmberWm {
         }
     }
 
+    fn change_to_current_workspace(&mut self) {
+        let key = self.current_workspace.to_string();
+        let mod_mask = self.conf.serializable.meta;
+        self.handle_workspace_change(&Keybind { mod_mask, key });
+    }
+
     pub fn init(&mut self) {
         self.displays_geometries = get_displays_geometries(&self.conn).unwrap();
         let screen = self.conn.get_setup().roots().next().unwrap();
@@ -116,6 +122,7 @@ impl UmberWm {
             )],
         );
         self.conn.flush();
+        self.change_to_current_workspace();
     }
 
     fn grab_custom_action_keys(&self, screen: &xcb::Screen) {

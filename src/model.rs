@@ -40,6 +40,12 @@ pub struct NormalHints {
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize, Hash)]
 pub enum Events {
     OnChangeWorkspace,
+    OnSwitchWindow,
+    OnSerializeAndQuit,
+    OnCloseWindow,
+    OnChangeLayout,
+    OnToggleGap,
+    OnQuit,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
