@@ -270,11 +270,6 @@ impl UmberWm {
                     .windows
                     .get(workspace.focus)
                     .ok_or(Error::WindowNotFound)?);
-                let window_string = window.to_string();
-                self.run_command_callback(
-                    Events::OnCloseWindow,
-                    vec![("%window_id%".to_string(), window_string)],
-                );
                 let wm_delete_window = xcb::intern_atom(&self.conn, false, "WM_DELETE_WINDOW")
                     .get_reply()?
                     .atom();
@@ -352,6 +347,11 @@ impl UmberWm {
                 }
             }
         }
+        let window_string = window.to_string();
+        self.run_command_callback(
+            Events::OnSetupWindow,
+            vec![("%window_id%".to_string(), window_string)],
+        );
         let wm_class =
             get_str_property(&self.conn, window, "WM_CLASS").ok_or(Error::FailedToGetWmClass)?;
         let window_type = get_atom_property(&self.conn, window, "_NET_WM_WINDOW_TYPE")?;
@@ -558,6 +558,11 @@ impl UmberWm {
                 }
                 if r == xcb::DESTROY_NOTIFY as u8 {
                     let map_notify: &xcb::DestroyNotifyEvent = unsafe { xcb::cast_event(&event) };
+                    let window_string = map_notify.window().to_string();
+                    self.run_command_callback(
+                        Events::OnCloseWindow,
+                        vec![("%window_id%".to_string(), window_string)],
+                    );
                     self.destroy_window(map_notify.window());
                 } else if r == xcb::BUTTON_PRESS as u8 {
                     let event: &xcb::ButtonPressEvent = unsafe { xcb::cast_event(&event) };

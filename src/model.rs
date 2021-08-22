@@ -43,6 +43,7 @@ pub enum Events {
     OnSwitchWindow,
     OnSerializeAndQuit,
     OnCloseWindow,
+    OnSetupWindow,
     OnChangeLayout,
     OnToggleGap,
     OnQuit,
