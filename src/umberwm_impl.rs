@@ -18,6 +18,15 @@ use std::io::prelude::*;
 use xcb::randr;
 use xcb::xproto;
 
+fn layout_to_string(layout: &Layout) -> String {
+    match layout {
+        Layout::Bspv => "bspv",
+        Layout::Bsph => "bsph",
+        Layout::Monocle => "monocle",
+    }
+    .to_string()
+}
+
 impl UmberWm {
     fn resize_workspace_windows(&mut self, workspace: &Workspace, mut display: usize) {
         let mut non_float_windows = workspace.windows.clone();
@@ -231,6 +240,7 @@ impl UmberWm {
     }
 
     fn serialize_and_quit(&mut self) -> Result<()> {
+        self.run_command_callback(Events::OnSerializeAndQuit, vec![]);
         let mut file = File::create(UMBERWM_STATE)?;
         let string = to_string(&SerializableState {
             float_windows: self.float_windows.clone(),
@@ -256,10 +266,15 @@ impl UmberWm {
             .ok_or(Error::WorkspaceNotFound)?;
         match action {
             Actions::CloseWindow => {
-                let window = workspace
+                let window = *(workspace
                     .windows
                     .get(workspace.focus)
-                    .ok_or(Error::WindowNotFound)?;
+                    .ok_or(Error::WindowNotFound)?);
+                let window_string = window.to_string();
+                self.run_command_callback(
+                    Events::OnCloseWindow,
+                    vec![("%window_id%".to_string(), window_string)],
+                );
                 let wm_delete_window = xcb::intern_atom(&self.conn, false, "WM_DELETE_WINDOW")
                     .get_reply()?
                     .atom();
@@ -273,8 +288,8 @@ impl UmberWm {
                     0,
                     0,
                 ]);
-                let ev = xcb::ClientMessageEvent::new(32, *window, wm_protocols, data);
-                xcb::send_event(&self.conn, false, *window, xcb::EVENT_MASK_NO_EVENT, &ev);
+                let ev = xcb::ClientMessageEvent::new(32, window, wm_protocols, data);
+                xcb::send_event(&self.conn, false, window, xcb::EVENT_MASK_NO_EVENT, &ev);
                 self.conn.flush();
             }
             Actions::SerializeAndQuit => {
@@ -283,6 +298,11 @@ impl UmberWm {
             Actions::SwitchWindow => {
                 if !workspace.windows.is_empty() {
                     workspace.focus = (workspace.focus + 1) % workspace.windows.len();
+                    let window_id = workspace.windows[workspace.focus].to_string();
+                    self.run_command_callback(
+                        Events::OnSwitchWindow,
+                        vec![("%window_id%".to_string(), window_id)],
+                    );
                 }
             }
             Actions::ChangeLayout => {
@@ -290,12 +310,25 @@ impl UmberWm {
                     Layout::Bspv => Layout::Monocle,
                     Layout::Monocle => Layout::Bsph,
                     Layout::Bsph => Layout::Bspv,
-                }
+                };
+                let layout_string = layout_to_string(&workspace.layout);
+                self.run_command_callback(
+                    Events::OnChangeLayout,
+                    vec![("%layout%".to_string(), layout_string)],
+                );
             }
             Actions::ToggleGap => {
                 self.conf.serializable.with_gap = !self.conf.serializable.with_gap;
+                let with_gap = self.conf.serializable.with_gap;
+                self.run_command_callback(
+                    Events::OnToggleGap,
+                    vec![("%with_gap%".to_string(), with_gap.to_string())],
+                );
             }
-            Actions::Quit => std::process::exit(0),
+            Actions::Quit => {
+                self.run_command_callback(Events::OnQuit, vec![]);
+                std::process::exit(0)
+            }
         };
         for (display, workspaces_names) in workspaces_names_by_display.iter().enumerate() {
             if workspaces_names.contains(&self.current_workspace) {
@@ -591,6 +624,22 @@ impl UmberWm {
         }
     }
 
+    fn run_command_callback(&self, callback_name: Events, substitutions: Vec<(String, String)>) {
+        if let Some(v) = self.conf.serializable.command_callbacks.get(&callback_name) {
+            let res = v
+                .iter()
+                .map(|x| {
+                    let mut out: String = x.clone();
+                    for (name, value) in substitutions.iter() {
+                        out = out.replace(name, value)
+                    }
+                    out
+                })
+                .collect::<Vec<String>>();
+            run_command(Some(&res));
+        }
+    }
+
     fn handle_workspace_change(&mut self, keybind: &Keybind) {
         let workspaces_names_by_display = self.conf.serializable.workspaces_names.clone();
         for (display, workspaces_names) in workspaces_names_by_display.iter().enumerate() {
@@ -624,18 +673,10 @@ impl UmberWm {
                     {
                         callback(keybind.key.clone(), actual_display)
                     }
-                    if let Some(v) = self
-                        .conf
-                        .serializable
-                        .command_callbacks
-                        .get(&Events::OnChangeWorkspace)
-                    {
-                        let res = v
-                            .iter()
-                            .map(|x| x.replace("%workspace_name%", &keybind.key.clone()))
-                            .collect::<Vec<String>>();
-                        run_command(Some(&res));
-                    }
+                    self.run_command_callback(
+                        Events::OnChangeWorkspace,
+                        vec![("%workspace_name%".to_string(), keybind.key.clone())],
+                    );
                 }
             }
         }
