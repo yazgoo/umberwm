@@ -1,0 +1,117 @@
+(
+    meta: 8,
+    border: (
+        width: 1,
+        focus_color: 9465087,
+        normal_color: 0,
+    ),
+    display_borders: [
+        (
+            left: 0,
+            right: 0,
+            bottom: 0,
+            top: 100,
+            gap: 20,
+        )
+    ],
+    workspaces_names: [
+        [
+            "a",
+            "b",
+            "c",
+            "d",
+        ],
+    ],
+    wm_actions: {
+        (
+            mod_mask: 12,
+            key: "q",
+        ): Quit,
+        (
+            mod_mask: 8,
+            key: "f",
+        ): ChangeLayout,
+        (
+            mod_mask: 8,
+            key: "space",
+        ): SwitchWindow,
+        (
+            mod_mask: 12,
+            key: "r",
+        ): SerializeAndQuit,
+        (
+            mod_mask: 8,
+            key: "g",
+        ): ToggleGap,
+        (
+            mod_mask: 8,
+            key: "w",
+        ): CloseWindow,
+    },
+    ignore_classes: [
+        "xscreensaver",
+        "Discover-overlay",
+    ],
+    float_classes: [
+        "confirm",
+        "dialog",
+        "error",
+        "splash",
+        "toolbar",
+        "screenkey",
+        "audacious",
+        "Download",
+        "dropbox",
+        "file_progress",
+        "file-roller",
+        "Komodo_confirm_repl",
+        "Komodo_find2",
+        "pidgin",
+        "skype",
+        "Transmission",
+        "Update",
+        "Xephyr",
+        "obs",
+        "rofi",
+        "xscreensaver",
+        "quickmarks",
+    ],
+    overlay_classes: [
+        "discover-overlay",
+        "Discover-overlay",
+    ],
+    sticky_classes: {},
+    with_gap: true,
+    custom_commands: {
+        (
+            mod_mask: 9,
+            key: "Return",
+        ): [
+            "alacritty",
+        ],
+        (
+            mod_mask: 8,
+            key: "r",
+        ): [
+            "rofi",
+            "-show",
+            "run",
+        ],
+        (
+            mod_mask: 9,
+            key: "l",
+        ): [
+            "lxlock",
+        ],
+    },
+    command_callbacks: {
+        OnChangeWorkspace: [ "./action-handler.sh", "ChangeWorkspace", "%workspace_name%" ],
+        OnSwitchWindow: [ "./action-handler.sh", "SwitchWindow", "%window_id%" ],
+        OnSerializeAndQuit: [ "./action-handler.sh", "SerializeAndQuit" ],
+        OnCloseWindow: [ "./action-handler.sh", "CloseWindow", "%window_id%"],
+        OnSetupWindow: [ "./action-handler.sh", "SetupWindow", "%window_id%"],
+        OnChangeLayout: [ "./action-handler.sh", "ChangeLayout", "%layout%"],
+        OnToggleGap: [ "./action-handler.sh", "ToggleGap", "%with_gap%"],
+        OnQuit: [ "./action-handler.sh", "Quit"],
+    },
+)

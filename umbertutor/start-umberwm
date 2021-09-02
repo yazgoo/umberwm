@@ -1,0 +1,13 @@
+#!/bin/bash
+
+# umbertutor
+touch action_log
+alacritty --config-file alacritty-umbertutor.yml --class xscreensaver --command ./umbertutor.sh &
+compton --backend glx  -c --shadow-exclude 'class_g = "panel"' --shadow-exclude 'class_g = "xscreensaver"' --shadow-exclude 'class_i = "xscreensaver"' --shadow-exclude 'class_g = "zoom"' --shadow-exclude 'class_i = "zoom"' --shadow-exclude 'class_i = "trayer"' --shadow-exclude 'class_g = "trayer"' --shadow-exclude 'class_g = "Discover-overlay"' \
+--no-fading-openclose --no-fading-destroyed-argb -I 0.01 -O 0.01 -D 1 &
+sleep 1 # makes sure umberwm does not take into account compton/picom
+while true
+do
+  umberwm
+  [ $? -ne 123 ] && break
+done

@@ -8,6 +8,13 @@ Minimalistic X window manager based on tinywm, inspired by qtile.
 
 Video introduction [on LBRY][lbry] or [on youtube][yt].
 
+# Tutorial and demo with x11docker
+
+ 1. install [x11docker](https://github.com/mviereck/x11docker)
+ 1. clone this repo
+ 1. `cd umbertutor`
+ 1. `make`
+
 # Design goals and features
 
   - Kiss: only window management (no taskbar, system tray, ...), complex stuff should be done using
