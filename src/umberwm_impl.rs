@@ -50,9 +50,9 @@ impl UmberWm {
             0
         };
         let geos = match workspace.layout {
-            Layout::Bspv => geometries_bsp(0, count, left, top, width, height, 1),
-            Layout::Bsph => geometries_bsp(0, count, left, top, width, height, 0),
-            Layout::Monocle => geometries_bsp(0, 1, left, top, width, height, 1),
+            Layout::Bspv => geometries_bsp(workspace.quota, 0, count, left, top, width, height, 1),
+            Layout::Bsph => geometries_bsp(workspace.quota, 0, count, left, top, width, height, 0),
+            Layout::Monocle => geometries_bsp(workspace.quota, 0, 1, left, top, width, height, 1),
         };
         match workspace.layout {
             Layout::Bspv | Layout::Bsph => resize_bsp(
@@ -298,6 +298,16 @@ impl UmberWm {
                         Events::OnSwitchWindow,
                         vec![("%window_id%".to_string(), window_id)],
                     );
+                }
+            }
+            Actions::DecreaseQuota => {
+                if workspace.quota > 0.1 {
+                    workspace.quota -= 0.1
+                }
+            }
+            Actions::IncreaseQuota => {
+                if workspace.quota < 0.9 {
+                    workspace.quota += 0.1
                 }
             }
             Actions::ChangeLayout => {

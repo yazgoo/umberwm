@@ -34,6 +34,7 @@ pub fn load_serializable_state(conf: &Conf) -> Result<SerializableState> {
                             layout: Layout::Bspv,
                             windows: vec![],
                             focus: 0,
+                            quota: 0.5,
                         },
                     )
                 })

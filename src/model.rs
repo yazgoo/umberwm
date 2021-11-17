@@ -56,6 +56,8 @@ pub enum Actions {
     CloseWindow,
     ChangeLayout,
     ToggleGap,
+    IncreaseQuota,
+    DecreaseQuota,
     Quit,
 }
 
@@ -96,6 +98,7 @@ pub struct Workspace {
     pub layout: Layout,
     pub windows: Vec<Window>,
     pub focus: usize,
+    pub quota: f32,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
