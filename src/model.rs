@@ -168,6 +168,11 @@ pub struct MouseMoveStart {
     pub detail: u8,
 }
 
+pub struct GeometryInfo {
+    pub vertical: usize,
+    pub quota: f32,
+}
+
 pub struct UmberWm {
     pub conf: Conf,
     pub current_workspace: WorkspaceName,

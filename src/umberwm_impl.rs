@@ -50,9 +50,42 @@ impl UmberWm {
             0
         };
         let geos = match workspace.layout {
-            Layout::Bspv => geometries_bsp(workspace.quota, 0, count, left, top, width, height, 1),
-            Layout::Bsph => geometries_bsp(workspace.quota, 0, count, left, top, width, height, 0),
-            Layout::Monocle => geometries_bsp(workspace.quota, 0, 1, left, top, width, height, 1),
+            Layout::Bspv => geometries_bsp(
+                0,
+                count,
+                left,
+                top,
+                width,
+                height,
+                &GeometryInfo {
+                    vertical: 1,
+                    quota: workspace.quota,
+                },
+            ),
+            Layout::Bsph => geometries_bsp(
+                0,
+                count,
+                left,
+                top,
+                width,
+                height,
+                &GeometryInfo {
+                    vertical: 0,
+                    quota: workspace.quota,
+                },
+            ),
+            Layout::Monocle => geometries_bsp(
+                0,
+                1,
+                left,
+                top,
+                width,
+                height,
+                &GeometryInfo {
+                    vertical: 1,
+                    quota: workspace.quota,
+                },
+            ),
         };
         match workspace.layout {
             Layout::Bspv | Layout::Bsph => resize_bsp(
