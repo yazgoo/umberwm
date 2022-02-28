@@ -333,6 +333,22 @@ impl UmberWm {
                     );
                 }
             }
+            Actions::SwapPreviousWindow => {
+                if !workspace.windows.is_empty() {
+                    if workspace.focus > 0 {
+                        workspace.windows.swap(workspace.focus, workspace.focus - 1);
+                        workspace.focus -= 1;
+                    }
+                }
+            }
+            Actions::SwapNextWindow => {
+                if !workspace.windows.is_empty() {
+                    if workspace.focus + 1 < workspace.windows.len() {
+                        workspace.windows.swap(workspace.focus, workspace.focus + 1);
+                        workspace.focus = workspace.focus + 1;
+                    }
+                }
+            }
             Actions::DecreaseQuota => {
                 if workspace.quota > 0.1 {
                     workspace.quota -= 0.1

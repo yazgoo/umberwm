@@ -69,6 +69,14 @@ fn main() {
                 (Keybind::new(meta, "w"), Actions::CloseWindow),
                 (Keybind::new(meta, "f"), Actions::ChangeLayout),
                 (Keybind::new(meta, "g"), Actions::ToggleGap),
+                (
+                    Keybind::new(meta | MOD_MASK_CONTROL, "h"),
+                    Actions::SwapPreviousWindow,
+                ),
+                (
+                    Keybind::new(meta | MOD_MASK_CONTROL, "l"),
+                    Actions::SwapNextWindow,
+                ),
                 (Keybind::new(meta | MOD_MASK_CONTROL, "q"), Actions::Quit),
                 (
                     // Restart UmberWM (if configured to do so - see README.md for details)

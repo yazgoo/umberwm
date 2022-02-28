@@ -54,6 +54,8 @@ pub enum Actions {
     SwitchWindow,
     SerializeAndQuit,
     CloseWindow,
+    SwapPreviousWindow,
+    SwapNextWindow,
     ChangeLayout,
     ToggleGap,
     IncreaseQuota,
